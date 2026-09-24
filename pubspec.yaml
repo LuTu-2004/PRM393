@@ -1,0 +1,47 @@
+name: diem_danh
+description: "Sổ điểm danh – ứng dụng điểm danh cho giảng viên (Flutter desktop)."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.13.3 <4.0.0'
+
+dependencies:
+  crypto: ^3.0.7
+  csv: ^8.0.0
+  excel: ^4.0.6
+  file_picker: ^13.1.0
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  intl: ^0.20.3
+  lucide_icons_flutter: ^3.1.20
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  qr_flutter: ^4.1.0
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4
+  sqflite_common_ffi: ^2.4.3
+  uuid: ^4.6.0
+  window_manager: ^0.5.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: BeVietnamPro
+      fonts:
+        - asset: assets/fonts/BeVietnamPro-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/BeVietnamPro-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/BeVietnamPro-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BeVietnamPro-Bold.ttf
+          weight: 700
