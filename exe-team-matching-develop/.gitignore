@@ -1,0 +1,18 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+
+# Node
+node_modules/
+dist/
+
+# Môi trường
+.env
+scratch/
+

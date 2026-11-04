@@ -1,0 +1,107 @@
+// ==========================================
+// EXE TEAM MATCHING - DBML CHO DBDIAGRAM.IO
+// Tham khao 37 Business Rules (BR-01 -> BR-37)
+// Chuyen doi sang Firestore: dung lam tai lieu thiet ke
+// ==========================================
+
+Table users {
+  id          varchar(128) [pk, note: 'Firebase UID']
+  email       varchar(100) [unique, not null, note: 'BR-02: @fpt.edu.vn']
+  full_name   varchar(100) [not null]
+  role        varchar(20)  [not null, note: 'student | moderator']
+  student_code varchar(20) [unique, null, note: 'BR-03, BR-04: MSSV']
+  major       varchar(50)  [null, note: 'BR-04: trich tu MSSV']
+  cohort      varchar(20)  [null, note: 'BR-04: khoa hoc']
+  accepted_policy_at timestamp [null, note: 'BR-34']
+  created_at  timestamp    [default: `now()`]
+}
+
+Table student_profiles {
+  user_id     varchar(128) [pk, ref: - users.id]
+  skills      text         [null, note: 'JSON array chuoi ky nang']
+  orientation varchar(200) [null, note: 'dinh huong khoi nghiep']
+  bio         text         [null]
+  is_complete boolean      [default: false, note: 'BR-05']
+  updated_at  timestamp    [default: `now()`]
+}
+
+Table semesters {
+  id           varchar(50)  [pk, note: 'Fall2026, Spring2027...']
+  name         varchar(100) [not null]
+  reg_deadline timestamp    [not null, note: 'BR-12, BR-32']
+  is_active    boolean      [default: true]
+}
+
+Table rooms {
+  id           varchar(128) [pk]
+  name         varchar(100) [not null]
+  description  text         [null]
+  subject_code varchar(20)  [not null, note: 'EXE101 | EXE201']
+  semester_id  varchar(50)  [ref: > semesters.id]
+  leader_id    varchar(128) [ref: > users.id]
+  is_public    boolean      [default: true, note: 'BR-10']
+  status       varchar(20)  [default: "open", note: 'open|full|closed|confirmed']
+  member_count int          [default: 1]
+  max_members  int          [default: 5, note: 'BR-08']
+  min_members  int          [default: 4, note: 'BR-07']
+  created_at   timestamp    [default: `now()`]
+
+  Note: 'BR-09: name, description, subject_code, semester_id bat buoc khi tao'
+}
+
+Table room_members {
+  id        varchar(128) [pk]
+  room_id   varchar(128) [ref: > rooms.id]
+  user_id   varchar(128) [ref: > users.id]
+  joined_at timestamp    [default: `now()`]
+
+  indexes {
+    (room_id, user_id) [unique, note: 'BR-06: moi sinh vien chi co 1 slot/hoc ky']
+  }
+}
+
+Table invitations {
+  id          varchar(128) [pk]
+  room_id     varchar(128) [ref: > rooms.id]
+  from_user   varchar(128) [ref: > users.id]
+  to_user     varchar(128) [ref: > users.id]
+  type        varchar(20)  [note: 'request | invite']
+  status      varchar(20)  [default: "pending", note: 'pending|accepted|rejected|expired']
+  expired_at  timestamp    [note: 'BR-20: 48h sau khi tao']
+  created_at  timestamp    [default: `now()`]
+
+  indexes {
+    (to_user, status) [name: 'idx_pending_by_user', note: 'BR-17: dem pending requests']
+  }
+}
+
+Table vote_sessions {
+  id           varchar(128) [pk]
+  room_id      varchar(128) [ref: > rooms.id]
+  initiated_by varchar(128) [ref: > users.id, note: 'BR-21: Leader kich hoat']
+  started_at   timestamp    [default: `now()`]
+  ended_at     timestamp    [note: 'BR-22: started_at + 24h']
+  status       varchar(20)  [default: "active", note: 'active | ended']
+}
+
+Table votes {
+  id         varchar(128) [pk]
+  session_id varchar(128) [ref: > vote_sessions.id]
+  voter_id   varchar(128) [ref: > users.id]
+  target_id  varchar(128) [ref: > users.id, note: 'BR-23: khac voter_id']
+  created_at timestamp    [default: `now()`]
+
+  indexes {
+    (session_id, voter_id) [unique, note: 'BR-23: moi nguoi chi bo 1 phieu/session']
+  }
+}
+
+Table audit_logs {
+  id          varchar(128) [pk]
+  actor_id    varchar(128) [ref: > users.id]
+  action      varchar(50)  [not null, note: 'BR-36: create_room|kick_member|vote|...']
+  target_type varchar(30)  [note: 'room | member | vote_session']
+  target_id   varchar(128)
+  meta        text         [note: 'JSON extra info']
+  created_at  timestamp    [default: `now()`]
+}

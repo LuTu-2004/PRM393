@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "959409386646",
+    "project_id": "exe-team-matching-70774",
+    "storage_bucket": "exe-team-matching-70774.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:959409386646:android:c391fab6788676b2807eb7",
+        "android_client_info": {
+          "package_name": "com.fpt.exe.exe_matching"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4PfawQsPfXgbVNpQecajWIM4pna8_nwE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

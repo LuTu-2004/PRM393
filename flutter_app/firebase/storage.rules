@@ -1,0 +1,20 @@
+﻿rules_version = '2';
+
+// Firebase Storage Security Rules
+// Lab 3 PRM393 — EXE Team Matching
+// Chi cho phep chu so huu (UID khop) doc/ghi bao cao cua chinh minh
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // [Lab 3 Requirement] Bao cao sinh vien — chi chu so huu moi duoc truy cap
+    // Path: reports/{uid}/report_{timestamp}.txt
+    match /reports/{uid}/{allPaths=**} {
+      // Cho phep doc/ghi khi:
+      // 1. Da dang nhap (request.auth != null)
+      // 2. UID cua nguoi dung trung voi thu muc ({uid})
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Cac path khac: khong cho phep (mac dinh deny)
+  }
+}
