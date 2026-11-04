@@ -60,3 +60,4 @@ x86/
 # Symbolication / Obfuscation
 app.*.symbols
 app.*.map.json
+
