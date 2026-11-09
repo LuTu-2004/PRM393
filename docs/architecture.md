@@ -49,16 +49,19 @@ Service được tạo một lần trong `main.dart` và đưa xuống bằng `P
 | `applications/{id}` | Đơn Apply và phiếu vote |
 | `transfer_requests/{id}` | Yêu cầu chuyển nhóm |
 | `crash_logs/{id}` | Tóm tắt sự cố cho web giảng viên |
+| `enrollments/{spaceId}_{MSSV}` | Danh sách FAP của từng môn (BR-01) |
 
 ## Các luồng chính
 - **Vào Room hoặc nhận ứng viên:** chạy transaction đọc Room và membership rồi mới ghi, để không vượt sĩ số và không vào hai nhóm. Tự Cancel và Reject đơn (BR-26, BR-28) chạy batch ngay sau transaction, vì transaction không chạy query được. Nếu mất mạng giữa hai bước, đơn có thể chưa đổi trạng thái; khi Leader nhận ứng viên đã có nhóm, `decideApplication` sẽ tự Cancel đơn đó.
 - **Thông báo:** app lấy token, lưu Firestore; `server/send_fcm.py` đọc token bằng Admin SDK và gọi FCM. Khóa service account nằm ngoài repo.
 - **Phân phối sinh viên lẻ:** `DistributionPlanner` lập kế hoạch thuần Dart để giảng viên xem trước; `applyDistribution` ghi trong transaction và dừng nếu dữ liệu vừa đổi.
+- **Import danh sách FAP:** `RosterParser` đọc CSV/`.xlsx` thuần Dart, `RosterDiff` so với danh sách đang lưu để giảng viên xem trước; `importRoster` ghi danh sách, cập nhật số sinh viên và tạo thêm Room còn thiếu. Bộ đọc `.xlsx` tự viết vì các thư viện Excel xung đột với `pdf` về phiên bản `xml`.
 - **Báo cáo:** tạo PDF trong app, upload Cloudinary bằng unsigned preset, lưu URL vào Firestore.
 
 ## Giới hạn đã biết
 - Ngưỡng, sĩ số, giới hạn Apply chỉ kiểm tra ở client; Rules chỉ kiểm tra quyền. Muốn chặn gian lận hoàn toàn cần chuyển lên Cloud Functions hoặc backend.
-- Không có danh sách FAP nên trang Phân phối chỉ thấy sinh viên đã đăng nhập và chọn môn; sinh viên chưa từng đăng nhập sẽ không được xếp.
+- Sinh viên có tên trong danh sách FAP nhưng chưa từng đăng nhập thì chưa có `uid`, nên trang Phân phối chưa xếp được; trang Danh sách hiện họ là "Chưa vào môn".
+- BR-01 chỉ kiểm tra ở client, chưa có trong Rules. Mẫu file FAP thật chưa được đối chiếu: bộ đọc nhận cột theo tên và chưa đọc được `.xls` cũ.
 - Web đọc sự cố từ `crash_logs` do app tự ghi, không phải từ Crashlytics. Crash chỉ ghi được khi người dùng mở lại app và đã đăng nhập.
 - Web không xem được Analytics; số liệu Analytics vẫn xem trên Firebase Console.
 - `isDemoAdmin()` trong Rules chỉ để tạo dữ liệu demo, phải xóa trước khi nộp.

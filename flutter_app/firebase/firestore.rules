@@ -82,6 +82,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // --- Danh sach FAP (BR-01) -------------------------------------------------
+    match /enrollments/{enrollmentId} {
+      // Sinh vien chi doc tung ban ghi theo ma de kiem tra minh co ten, khong liet ke ca danh sach.
+      allow get: if isSchool();
+      allow list, write: if isAdmin();
+    }
+
     // --- Room -------------------------------------------------------------------
     match /rooms/{roomId} {
       allow read: if isSchool();

@@ -6,6 +6,7 @@ import 'package:exe_matching/models/application.dart';
 import 'package:exe_matching/models/firestore_utils.dart';
 import 'package:exe_matching/models/leader_election.dart';
 import 'package:exe_matching/models/room.dart';
+import 'package:exe_matching/models/roster_entry.dart';
 import 'package:exe_matching/models/space.dart';
 import 'package:exe_matching/models/transfer_request.dart';
 
@@ -177,6 +178,7 @@ class GroupService {
     final status = await _db.runTransaction<RoomStatus>((tx) async {
       final space = await _readSpace(tx, user);
       _requireRegistrationOpen(space);
+      await _requireEnrolled(space, user);
       final room = await _readRoom(tx, roomId);
       _requireSameSpace(room, space);
       await _requireNoRoom(tx, space.id, user.uid);
@@ -213,6 +215,7 @@ class GroupService {
   Future<RoomApplication> applyToRoom(AppUser user, String roomId, {String? message}) async {
     final space = await _getSpace(user);
     _requireRegistrationOpen(space);
+    await _requireEnrolled(space, user);
     final roomSnap = await _rooms.doc(roomId).get();
     if (!roomSnap.exists) throw const BusinessException('Không tìm thấy Room.');
     final room = Room.fromMap(roomSnap.id, roomSnap.data()!);
@@ -624,6 +627,27 @@ class GroupService {
     photoUrl: user.photoUrl,
     joinedAt: _now(),
   );
+
+  /// BR-01: kiem tra khi sinh vien chon mon. Mon chua mo hoac chua import danh sach thi cho qua.
+  Future<void> requireEnrolled(AppUser user, String courseCode) async {
+    final snap = await _spaces.doc(AppUser.spaceIdFor(AppConfig.currentTerm, courseCode)).get();
+    if (snap.exists) await _requireEnrolled(Space.fromMap(snap.id, snap.data()!), user);
+  }
+
+  /// BR-01: mon da co danh sach FAP thi chi sinh vien co ten moi duoc vao.
+  Future<void> _requireEnrolled(Space space, AppUser user) async {
+    if (space.rosterCount == 0) return;
+    final code = user.studentCode;
+    final enrolled =
+        code != null &&
+        (await _db.collection(Collections.enrollments).doc(RosterEntry.idFor(space.id, code)).get())
+            .exists;
+    if (!enrolled) {
+      throw BusinessException(
+        'Bạn không có tên trong danh sách FAP của môn ${space.courseCode}. Hãy liên hệ giảng viên.',
+      );
+    }
+  }
 
   void _requireProfile(AppUser user) {
     if (!user.isProfileComplete) {

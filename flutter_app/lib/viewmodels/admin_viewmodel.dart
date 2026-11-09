@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:exe_matching/config/app_config.dart';
 import 'package:exe_matching/domain/distribution_planner.dart';
+import 'package:exe_matching/domain/roster_diff.dart';
+import 'package:exe_matching/domain/roster_parser.dart';
 import 'package:exe_matching/models/app_user.dart';
 import 'package:exe_matching/models/crash_log.dart';
 import 'package:exe_matching/models/room.dart';
+import 'package:exe_matching/models/roster_entry.dart';
 import 'package:exe_matching/models/space.dart';
 import 'package:exe_matching/models/transfer_request.dart';
 import 'package:exe_matching/services/admin_service.dart';
@@ -45,6 +48,8 @@ class AdminViewModel extends ChangeNotifier {
   List<CrashLog> _crashLogs = const [];
   String? _loadError;
   DistributionPlan? _plan;
+  List<RosterEntry> _roster = const [];
+  RosterParseResult? _rosterFile;
 
   AdminViewModel({required this._auth, required this._users, required this._admin}) {
     _authSub = _auth.authStateChanges().listen(_onAuth);
@@ -75,13 +80,23 @@ class AdminViewModel extends ChangeNotifier {
     return null;
   }
 
-  /// BR-30: sinh vien chua co nhom. Chi tinh nguoi da dang nhap va chon mon, vi khong co FAP.
-  List<AppUser> get strayStudents =>
-      _students.where((u) => !_assigned.contains(u.uid)).toList()
-        ..sort((a, b) => a.fullName.compareTo(b.fullName));
+  RosterMatch get _rosterMatch => RosterMatch(students: _students, roster: _roster);
+  List<RosterEntry> get roster => _roster;
+  List<RosterEntry> get rosterNotJoined => _rosterMatch.notJoined;
+  List<AppUser> get studentsNotOnRoster => _rosterMatch.notOnRoster;
+
+  /// File vua chon, chua luu. Diff tinh lai moi lan de khop danh sach moi nhat.
+  RosterParseResult? get rosterFile => _rosterFile;
+  RosterDiff? get rosterDiff {
+    final file = _rosterFile;
+    return file == null ? null : RosterDiff.of(_roster, file.entries);
+  }
+
+  /// BR-30: sinh vien chua co nhom. Chi xep duoc nguoi da dang nhap va chon mon.
+  List<AppUser> get strayStudents => _rosterMatch.strays(_assigned);
 
   int get studentCount => _students.length;
-  int get assignedCount => _students.length - strayStudents.length;
+  int get assignedCount => _students.where((u) => _assigned.contains(u.uid)).length;
   RoomStatus statusOf(Room room) => room.statusIn(spaceFinalized: space?.finalized ?? false);
   int countByStatus(RoomStatus status) => _rooms.where((r) => statusOf(r) == status).length;
 
@@ -190,10 +205,16 @@ class AdminViewModel extends ChangeNotifier {
     _students = const [];
     _assigned = const {};
     _transfers = const [];
+    _roster = const [];
+    _rosterFile = null;
     _cancel(_spaceSubs);
     final current = space;
     if (current == null) return;
     _spaceSubs.addAll([
+      _admin.watchRoster(spaceId).listen((v) {
+        _roster = v;
+        notifyListeners();
+      }, onError: _onLoadError),
       _admin.watchRooms(spaceId).listen((v) {
         _rooms = v;
         notifyListeners();
@@ -223,6 +244,37 @@ class AdminViewModel extends ChangeNotifier {
   }
 
   // --- Thao tac ---------------------------------------------------------------
+
+  /// Doc file de giang vien xem truoc, chua ghi gi.
+  Future<ActionResult> loadRosterFile(Uint8List bytes, String fileName) =>
+      _run('parse_roster', () async {
+        _requireSpace();
+        try {
+          _rosterFile = RosterParser.parse(bytes, fileName);
+        } on RosterFormatException catch (e) {
+          throw BusinessException(e.message);
+        }
+      }, 'Đã đọc file, hãy xem lại trước khi lưu.');
+
+  void clearRosterFile() {
+    _rosterFile = null;
+    notifyListeners();
+  }
+
+  Future<ActionResult> applyRoster() async {
+    final diff = rosterDiff;
+    if (diff == null) return const ActionResult.failure('Chưa chọn file.');
+    var addedRooms = 0;
+    final result = await _run('import_roster', () async {
+      addedRooms = await _admin.importRoster(_requireSpace(), diff);
+      _rosterFile = null;
+    }, 'Đã lưu danh sách ${diff.total} sinh viên.');
+    return result.ok && addedRooms > 0
+        ? ActionResult.success(
+            'Đã lưu danh sách ${diff.total} sinh viên và tạo thêm $addedRooms Room.',
+          )
+        : result;
+  }
 
   Future<ActionResult> createSpace({
     required String term,
@@ -323,7 +375,7 @@ class AdminViewModel extends ChangeNotifier {
 
   Future<ActionResult> seedDemoStudents() => _run(
     'seed_demo_students',
-    () => _admin.seedDemoStudents(_requireSpace().courseCode),
+    () => _admin.seedDemoStudents(_requireSpace()),
     'Đã tạo 7 sinh viên demo chưa có nhóm.',
   );
 

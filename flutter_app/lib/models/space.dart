@@ -15,6 +15,9 @@ class Space {
   /// BR-33: giang vien da chot so.
   final bool finalized;
 
+  /// BR-01: so sinh vien trong danh sach FAP da import. 0 nghia la chua import, chua chan ai.
+  final int rosterCount;
+
   const Space({
     required this.id,
     required this.term,
@@ -25,6 +28,7 @@ class Space {
     required this.studentCount,
     required this.registrationDeadline,
     this.finalized = false,
+    this.rosterCount = 0,
   });
 
   int get groupThreshold => RoomRules.groupThreshold(maxGroupSize);
@@ -46,6 +50,7 @@ class Space {
     'studentCount': studentCount,
     'registrationDeadline': writeDate(registrationDeadline),
     'finalized': finalized,
+    'rosterCount': rosterCount,
   };
 
   factory Space.fromMap(String id, Map<String, dynamic> map) {
@@ -59,6 +64,7 @@ class Space {
       studentCount: (map['studentCount'] as num?)?.toInt() ?? 0,
       registrationDeadline: readDate(map['registrationDeadline']) ?? DateTime(2100),
       finalized: map['finalized'] as bool? ?? false,
+      rosterCount: (map['rosterCount'] as num?)?.toInt() ?? 0,
     );
   }
 }

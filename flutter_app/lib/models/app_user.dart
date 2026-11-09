@@ -66,7 +66,7 @@ class AppUser {
   final String? major;
   final String? cohort;
 
-  /// Mon dang hoc. Khong co danh sach FAP nen sinh vien tu chon mon khi khai ho so.
+  /// Mon dang hoc. Sinh vien tu chon mon khi khai ho so; mon da co danh sach FAP thi phai co ten.
   final String? courseCode;
   final SkillScores skills;
 

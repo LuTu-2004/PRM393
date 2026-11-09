@@ -96,6 +96,7 @@ class _AdminShellState extends State<AdminShell> {
   static const _pages = <Widget>[
     OverviewPage(),
     RoomsPage(),
+    RosterPage(),
     DistributionPage(),
     TransfersPage(),
     CrashLogsPage(),
@@ -111,6 +112,7 @@ class _AdminShellState extends State<AdminShell> {
     final destinations = <(IconData, String, int)>[
       (Icons.dashboard_outlined, 'Tổng quan', 0),
       (Icons.meeting_room_outlined, 'Nhóm', 0),
+      (Icons.upload_file_outlined, 'Danh sách', vm.studentsNotOnRoster.length),
       (Icons.group_add_outlined, 'Phân phối', vm.strayStudents.length),
       (Icons.swap_horiz, 'Chuyển nhóm', pendingTransfers),
       (Icons.bug_report_outlined, 'Sự cố', 0),

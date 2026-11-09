@@ -47,7 +47,7 @@ class ProfileViewModel extends ChangeNotifier {
   bool get commitment => _commitment;
   bool get saving => _saving;
 
-  /// Khong co FAP nen sinh vien tu chon mon mot lan, sau do khoa lai.
+  /// Sinh vien tu chon mon mot lan, sau do khoa lai. Mon da co danh sach FAP thi phai co ten.
   bool get canChangeCourse => user.courseCode == null;
   bool get canSave => _courseCode != null && _commitment && !_saving;
 
@@ -79,6 +79,7 @@ class ProfileViewModel extends ChangeNotifier {
     final result = await runAction(
       name: 'save_profile',
       action: () async {
+        await _groups.requireEnrolled(user, course);
         await _users.saveProfile(
           current: user,
           courseCode: course,

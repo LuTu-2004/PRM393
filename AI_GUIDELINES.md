@@ -9,9 +9,10 @@
 Bộ 37 BR cũ từng nằm trong file này (sinh viên tự tạo phòng, luật 50% cùng ngành, vote 75% chốt nhóm, request hết hạn 48h, Leader kick, mời theo MSSV) **đã bỏ**. Không thêm lại các chức năng đó.
 
 Quyết định đã chốt thêm:
-- Không có danh sách FAP, nên BR-01 chỉ kiểm tra đuôi email: `@fpt.edu.vn` là sinh viên, `@fe.edu.vn` là giảng viên.
-- App Android **chỉ dành cho sinh viên**; giảng viên đăng nhập app chỉ thấy màn thông báo. Giảng viên dùng web Flutter (`lib/main_admin.dart`, `AdminService`, `AdminViewModel`, `screens/admin/`): cấu hình môn, tạo Room, phân phối sinh viên lẻ, chốt sổ, duyệt chuyển nhóm, xem sự cố.
-- Không có FAP nên sinh viên tự chọn môn (EXE101/EXE201) một lần trong hồ sơ.
+- Đăng nhập kiểm tra đuôi email: `@fpt.edu.vn` là sinh viên, `@fe.edu.vn` là giảng viên (BR-02).
+- BR-01: giảng viên import danh sách FAP bằng file CSV/`.xlsx` trên web, lưu ở `enrollments`. Môn đã có danh sách thì chỉ sinh viên có tên mới chọn được môn, vào Room hoặc Apply; môn chưa import thì chưa chặn ai.
+- App Android **chỉ dành cho sinh viên**; giảng viên đăng nhập app chỉ thấy màn thông báo. Giảng viên dùng web Flutter (`lib/main_admin.dart`, `AdminService`, `AdminViewModel`, `screens/admin/`): import danh sách FAP, cấu hình môn, tạo Room, phân phối sinh viên lẻ, chốt sổ, duyệt chuyển nhóm, xem sự cố.
+- Sinh viên tự chọn môn (EXE101/EXE201) một lần trong hồ sơ.
 - Nếu môn chưa được giảng viên tạo, app tự tạo Space mặc định và các Room theo BR-09 để demo (`GroupService.ensureSpace`).
 - Crashlytics không có API đọc trực tiếp cho web, nên app ghi thêm bản tóm tắt vào `crash_logs`; web đọc từ đó.
 

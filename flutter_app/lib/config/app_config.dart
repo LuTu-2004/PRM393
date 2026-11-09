@@ -12,7 +12,7 @@ class AppConfig {
   /// Cac mon EXE ma he thong ho tro.
   static const List<String> courses = ['EXE101', 'EXE201'];
 
-  /// Duoi email truong (BR-01, BR-02). Khong co danh sach FAP nen chi kiem tra duoi email.
+  /// Duoi email truong (BR-02). Danh sach FAP cua tung mon nam o collection enrollments (BR-01).
   static const String studentEmailDomain = '@fpt.edu.vn';
   static const String lecturerEmailDomain = '@fe.edu.vn';
 
@@ -47,6 +47,7 @@ class Collections {
   static const String spaces = 'spaces';
   static const String rooms = 'rooms';
   static const String memberships = 'memberships';
+  static const String enrollments = 'enrollments'; // danh sach FAP theo Space (BR-01)
   static const String applications = 'applications';
   static const String elections = 'elections'; // subcollection cua rooms
   static const String transferRequests = 'transfer_requests';

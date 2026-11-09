@@ -2,17 +2,19 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:exe_matching/config/app_config.dart';
 import 'package:exe_matching/domain/distribution_planner.dart';
 import 'package:exe_matching/domain/room_rules.dart';
+import 'package:exe_matching/domain/roster_diff.dart';
 import 'package:exe_matching/models/app_user.dart';
 import 'package:exe_matching/models/application.dart';
 import 'package:exe_matching/models/crash_log.dart';
 import 'package:exe_matching/models/firestore_utils.dart';
 import 'package:exe_matching/models/room.dart';
+import 'package:exe_matching/models/roster_entry.dart';
 import 'package:exe_matching/models/space.dart';
 import 'package:exe_matching/models/transfer_request.dart';
 import 'package:exe_matching/services/group_service.dart';
 
-/// Nghiep vu cua giang vien tren web: cau hinh mon, tao Room, phan phoi sinh vien le,
-/// chot so, chuyen nhom (BR-08, BR-09, BR-30 - BR-33, BR-35 - BR-37).
+/// Nghiep vu cua giang vien tren web: import danh sach FAP, cau hinh mon, tao Room, phan phoi
+/// sinh vien le, chot so, chuyen nhom (BR-01, BR-08, BR-09, BR-30 - BR-33, BR-35 - BR-37).
 class AdminService {
   final FirebaseFirestore _db;
   final DateTime Function() _now;
@@ -30,6 +32,8 @@ class AdminService {
       _db.collection(Collections.applications);
   CollectionReference<Map<String, dynamic>> get _transfers =>
       _db.collection(Collections.transferRequests);
+  CollectionReference<Map<String, dynamic>> get _enrollments =>
+      _db.collection(Collections.enrollments);
 
   // --- Doc du lieu ----------------------------------------------------------
 
@@ -48,7 +52,17 @@ class AdminService {
               ..sort((a, b) => a.number.compareTo(b.number)),
       );
 
-  /// Sinh vien da chon mon nay. Khong co danh sach FAP nen chi biet nguoi da dang nhap.
+  /// Danh sach FAP da import cua Space (BR-01).
+  Stream<List<RosterEntry>> watchRoster(String spaceId) => _enrollments
+      .where('spaceId', isEqualTo: spaceId)
+      .snapshots()
+      .map(
+        (q) =>
+            q.docs.map((d) => RosterEntry.fromMap(d.data())).toList()
+              ..sort((a, b) => a.studentCode.compareTo(b.studentCode)),
+      );
+
+  /// Sinh vien da dang nhap va chon mon nay.
   Stream<List<AppUser>> watchStudents(String courseCode) => _users
       .where('courseCode', isEqualTo: courseCode)
       .snapshots()
@@ -78,6 +92,33 @@ class AdminService {
       .limit(limit)
       .snapshots()
       .map((q) => q.docs.map((d) => CrashLog.fromMap(d.id, d.data())).toList());
+
+  // --- Danh sach FAP (BR-01) ------------------------------------------------
+
+  /// Ghi danh sach moi, roi lay si so that lam so sinh vien va tao them Room con thieu (BR-09).
+  /// Khong xoa Room thua. rosterCount ghi sau cung de BR-01 chi bat khi danh sach da ghi xong.
+  /// Tra ve so Room tao them.
+  Future<int> importRoster(Space space, RosterDiff diff) async {
+    _requireNotFinalized(space);
+    await _commitChunks([
+      for (final e in [...diff.added, ...diff.updated])
+        (b) => b.set(_enrollments.doc(RosterEntry.idFor(space.id, e.studentCode)), {
+          ...e.toMap(space.id),
+          'importedAt': writeDate(_now()),
+        }),
+      for (final e in diff.removed)
+        (b) => b.delete(_enrollments.doc(RosterEntry.idFor(space.id, e.studentCode))),
+      (b) => b.update(_spaces.doc(space.id), {'rosterCount': diff.total}),
+    ]);
+    return updateSpaceConfig(
+      space: space,
+      maxGroupSize: space.maxGroupSize,
+      reservePercent: space.reservePercent,
+      applyLimit: space.applyLimit,
+      studentCount: diff.total,
+      registrationDeadline: space.registrationDeadline,
+    );
+  }
 
   // --- Cau hinh va tao Room (BR-08, BR-09, BR-11) -------------------------
 
@@ -406,7 +447,9 @@ class AdminService {
   // --- Du lieu demo --------------------------------------------------------
 
   /// Tao sinh vien gia chua co nhom de thu phan phoi. Chi goi tu ban debug.
-  Future<void> seedDemoStudents(String courseCode) async {
+  /// Mon da co danh sach FAP thi them ca vao danh sach, neu khong se khong phan phoi duoc.
+  Future<void> seedDemoStudents(Space space) async {
+    final courseCode = space.courseCode;
     const people = [
       ('Đinh Quang Vũ', 'SE180401', 80, 40, 10, 20, 30),
       ('Lưu Thảo Nguyên', 'SS180402', 10, 70, 20, 85, 60),
@@ -440,8 +483,18 @@ class AdminService {
         ),
       );
       batch.set(_users.doc(uid), user.toMap());
+      if (space.rosterCount > 0) {
+        batch.set(
+          _enrollments.doc(RosterEntry.idFor(space.id, p.$2)),
+          RosterEntry(studentCode: p.$2, fullName: p.$1).toMap(space.id),
+        );
+      }
     }
     await batch.commit();
+    if (space.rosterCount > 0) {
+      final roster = await _enrollments.where('spaceId', isEqualTo: space.id).get();
+      await _spaces.doc(space.id).update({'rosterCount': roster.docs.length});
+    }
   }
 
   // --- Ham phu -------------------------------------------------------------

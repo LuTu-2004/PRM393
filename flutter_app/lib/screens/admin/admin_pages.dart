@@ -1,4 +1,6 @@
 import 'package:exe_matching/domain/distribution_planner.dart';
+import 'package:exe_matching/domain/roster_diff.dart';
+import 'package:exe_matching/domain/roster_parser.dart';
 import 'package:exe_matching/models/room.dart';
 import 'package:exe_matching/models/transfer_request.dart';
 import 'package:exe_matching/screens/admin/admin_space_dialog.dart';
@@ -10,6 +12,7 @@ import 'package:exe_matching/widgets/feedback.dart';
 import 'package:exe_matching/widgets/skill_bars.dart';
 import 'package:exe_matching/widgets/state_views.dart';
 import 'package:exe_matching/widgets/status_chip.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -124,6 +127,7 @@ class OverviewPage extends StatelessWidget {
           runSpacing: AppSpacing.md,
           children: [
             _Stat('Tổng Room', '${vm.rooms.length}'),
+            _Stat('Trong danh sách FAP', '${vm.roster.length}'),
             _Stat('Sinh viên đã đăng nhập', '${vm.studentCount}'),
             _Stat('Đã có nhóm', '${vm.assignedCount}'),
             _Stat('Chưa có nhóm', '${vm.strayStudents.length}'),
@@ -257,6 +261,182 @@ class RoomsPage extends StatelessWidget {
   }
 }
 
+/// BR-01: import danh sach sinh vien tu file CSV/Excel xuat tu FAP.
+class RosterPage extends StatelessWidget {
+  const RosterPage({super.key});
+
+  Future<void> _pick(BuildContext context, AdminViewModel vm) async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['csv', 'xlsx', 'xls'],
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (context.mounted) await _act(context, () => vm.loadRosterFile(bytes, file.name));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = context.watch<AdminViewModel>();
+    final finalized = vm.space?.finalized ?? false;
+    final text = Theme.of(context).textTheme;
+    final muted = text.bodyMedium?.copyWith(color: AppColors.textSecondary);
+    final notJoined = {for (final s in vm.rosterNotJoined) s.studentCode};
+    final outsiders = vm.studentsNotOnRoster;
+
+    return _Page(
+      title: 'Danh sách FAP (${vm.roster.length} sinh viên)',
+      action: finalized || vm.rosterFile != null
+          ? null
+          : FilledButton.icon(
+              onPressed: vm.busy ? null : () => _pick(context, vm),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: Text(vm.roster.isEmpty ? 'Import CSV/Excel' : 'Import lại'),
+            ),
+      children: [
+        Text(
+          'File .csv hoặc .xlsx cần có cột MSSV (hoặc Roll Number, Email) và cột Họ tên '
+          '(hoặc Full name, hoặc Surname, Middle name, Given name). '
+          'Sau khi import, chỉ sinh viên có tên mới chọn được môn, vào Room hoặc Apply.',
+          style: muted,
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        if (vm.rosterFile != null) _RosterPreviewCard(file: vm.rosterFile!, diff: vm.rosterDiff!),
+        if (outsiders.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${outsiders.length} sinh viên đã vào môn nhưng không có trong danh sách',
+                      style: text.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                    Text(
+                      'Họ không vào Room hoặc Apply thêm được và không được phân phối. '
+                      'Nếu đã có nhóm, họ vẫn ở trong nhóm đó.',
+                      style: muted,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    for (final s in outsiders)
+                      Text('${s.studentCode ?? 'Không rõ MSSV'} · ${s.fullName}'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (vm.roster.isEmpty && vm.rosterFile == null)
+          const EmptyView(
+            icon: Icons.upload_file_outlined,
+            title: 'Chưa import danh sách',
+            message: 'Khi chưa có danh sách, mọi sinh viên có email trường đều chọn được môn này.',
+          ),
+        for (final entry in vm.roster)
+          Card(
+            child: ListTile(
+              dense: true,
+              title: Text(entry.fullName),
+              subtitle: Text([entry.studentCode, entry.email].whereType<String>().join(' · ')),
+              trailing: Text(
+                notJoined.contains(entry.studentCode) ? 'Chưa vào môn' : 'Đã vào môn',
+                style: muted,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _RosterPreviewCard extends StatelessWidget {
+  final RosterParseResult file;
+  final RosterDiff diff;
+  const _RosterPreviewCard({required this.file, required this.diff});
+
+  static const _maxIssuesShown = 20;
+
+  Future<void> _apply(BuildContext context, AdminViewModel vm) async {
+    if (diff.removed.isNotEmpty) {
+      final ok = await confirm(
+        context,
+        title: 'Bỏ ${diff.removed.length} sinh viên khỏi danh sách?',
+        message:
+            'File mới không có các sinh viên này. Họ sẽ không vào Room hoặc Apply thêm được, '
+            'nhưng nhóm hiện tại của họ không thay đổi.',
+        confirmLabel: 'Lưu danh sách',
+        destructive: true,
+      );
+      if (!ok || !context.mounted) return;
+    }
+    await _act(context, vm.applyRoster);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = context.read<AdminViewModel>();
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+      child: Card(
+        color: AppColors.infoContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${file.fileName}: ${file.entries.length} sinh viên hợp lệ',
+                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Thêm mới ${diff.added.length} · Cập nhật ${diff.updated.length} · '
+                'Bỏ khỏi danh sách ${diff.removed.length} · Không đổi ${diff.unchanged}',
+              ),
+              Text(
+                'Số sinh viên của môn sẽ đổi thành ${diff.total}; Room còn thiếu sẽ được tạo thêm.',
+              ),
+              for (final e in diff.removed)
+                Text(
+                  'Bỏ: ${e.studentCode} · ${e.fullName}',
+                  style: const TextStyle(color: AppColors.warning),
+                ),
+              if (file.issues.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Bỏ qua ${file.issues.length} dòng lỗi:',
+                  style: text.titleSmall?.copyWith(color: AppColors.warning),
+                ),
+                for (final issue in file.issues.take(_maxIssuesShown))
+                  Text('Dòng ${issue.row}: ${issue.message}'),
+                if (file.issues.length > _maxIssuesShown)
+                  Text('... và ${file.issues.length - _maxIssuesShown} dòng khác'),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              Wrap(
+                spacing: AppSpacing.sm,
+                children: [
+                  OutlinedButton(onPressed: vm.clearRosterFile, child: const Text('Hủy')),
+                  FilledButton(
+                    onPressed: vm.busy ? null : () => _apply(context, vm),
+                    child: const Text('Lưu danh sách'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// BR-30 - BR-32: sinh vien chua co nhom va phan phoi cuong che.
 class DistributionPage extends StatelessWidget {
   const DistributionPage({super.key});
@@ -279,7 +459,10 @@ class DistributionPage extends StatelessWidget {
           : null,
       children: [
         Text(
-          'Chỉ tính sinh viên đã đăng nhập và chọn môn, vì hệ thống chưa có danh sách FAP.',
+          vm.roster.isEmpty
+              ? 'Chỉ tính sinh viên đã đăng nhập và chọn môn, vì môn này chưa import danh sách FAP.'
+              : 'Chỉ xếp được sinh viên đã đăng nhập và chọn môn. '
+                    'Còn ${vm.rosterNotJoined.length} sinh viên trong danh sách FAP chưa vào môn.',
           style: text.bodyMedium?.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: AppSpacing.md),
