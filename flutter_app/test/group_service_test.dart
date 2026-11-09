@@ -43,6 +43,16 @@ void main() {
     }
   }
 
+  /// Leader mo vote, ca nhom Room 01 vote nhan den khi co ket qua (BR-25).
+  Future<void> admit(String applicationId) async {
+    await service.openApplicationVote(student('a'), applicationId);
+    final members = (await room('FA26EXE101-01')).memberIds;
+    for (final uid in members) {
+      final status = await service.voteApplication(student(uid), applicationId, true);
+      if (status != ApplicationStatus.pending) return;
+    }
+  }
+
   setUp(() async {
     db = FakeFirebaseFirestore();
     now = DateTime(2026, 11, 1, 8);
@@ -146,23 +156,120 @@ void main() {
         throwsA(isA<BusinessException>()),
         reason: 'Leader chua mo vote',
       );
+      await expectLater(
+        () => service.openApplicationVote(student('b'), app.id),
+        throwsA(isA<BusinessException>()),
+        reason: 'chi Leader mo vote',
+      );
       await service.openApplicationVote(student('a'), app.id);
-      await service.voteApplication(student('b'), app.id, true);
+      expect(await service.voteApplication(student('b'), app.id, true), ApplicationStatus.pending);
       await expectLater(
         () => service.voteApplication(student('b'), app.id, false),
         throwsA(isA<BusinessException>()),
         reason: 'moi thanh vien mot phieu',
       );
+      await expectLater(
+        () => service.voteApplication(student('x'), app.id, true),
+        throwsA(isA<BusinessException>()),
+        reason: 'nguoi ngoai nhom khong vote',
+      );
       expect((await application(app.id)).acceptVotes, 1);
     });
 
-    test('BR-25: chi Leader duoc Accept', () async {
+    test('BR-25: du hon 50% phieu nhan thi vao nhom, thanh vien thuong chot duoc', () async {
       await makeGroup();
       final app = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      await service.voteApplication(student('b'), app.id, true);
+      expect(await service.voteApplication(student('c'), app.id, true), ApplicationStatus.accepted);
+      final stored = await application(app.id);
+      expect(stored.status, ApplicationStatus.accepted);
+      expect(stored.acceptVotes, 2, reason: 'phieu quyet dinh van duoc ghi');
+      expect((await room('FA26EXE101-01')).memberIds, contains('d'));
+      expect((await room('FA26EXE101-01')).leaderId, 'a', reason: 'Leader giu nguyen');
+    });
+
+    test('BR-25: khong con du phieu thi tu Reject, ke ca khi Leader vote nhan', () async {
+      await makeGroup();
+      final app = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      await service.voteApplication(student('a'), app.id, true);
+      await service.voteApplication(student('b'), app.id, false);
+      expect(
+        await service.voteApplication(student('c'), app.id, false),
+        ApplicationStatus.rejected,
+      );
+      expect((await room('FA26EXE101-01')).memberIds, isNot(contains('d')));
+    });
+
+    test('BR-25: hoa 2-2 tren 4 nguoi la khong dat hon 50%', () async {
+      await makeGroup();
+      final first = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await admit(first.id);
+      final app = await service.applyToRoom(student('e'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      await service.voteApplication(student('a'), app.id, true);
+      await service.voteApplication(student('b'), app.id, true);
+      await service.voteApplication(student('c'), app.id, false);
+      expect(
+        await service.voteApplication(student('d'), app.id, false),
+        ApplicationStatus.rejected,
+      );
+    });
+
+    test('BR-25: nguoi roi nhom khong con tinh phieu, phai chot lai ket qua', () async {
+      await makeGroup();
+      final first = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await admit(first.id); // a, b, c, d
+      final app = await service.applyToRoom(student('e'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      await service.voteApplication(student('a'), app.id, true);
+      await service.voteApplication(student('b'), app.id, true);
+      await service.leaveRoom(student('d'), 'FA26EXE101-01');
+
+      // Con a, b, c: 2 phieu nhan da hon 50% nhung khong co phieu moi de kich hoat.
+      expect((await application(app.id)).status, ApplicationStatus.pending);
+      expect(await service.settleApplicationVote(student('c'), app.id), ApplicationStatus.accepted);
+      expect((await room('FA26EXE101-01')).memberIds, contains('e'));
+    });
+
+    test('BR-25: chot khi chua du ket qua thi khong doi gi', () async {
+      await makeGroup();
+      final app = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      await service.voteApplication(student('a'), app.id, true);
+      expect(await service.settleApplicationVote(student('b'), app.id), ApplicationStatus.pending);
+      expect((await application(app.id)).acceptVotes, 1);
+    });
+
+    test('BR-25: het han dang ky thi khong vote duoc', () async {
+      await makeGroup();
+      final app = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      now = now.add(const Duration(days: 31));
       await expectLater(
-        () => service.decideApplication(student('b'), app.id, true),
+        () => service.voteApplication(student('a'), app.id, true),
         throwsA(isA<BusinessException>()),
       );
+    });
+
+    test('BR-26: ung vien da vao nhom khac thi phieu quyet dinh chuyen don thanh Cancel', () async {
+      await makeGroup();
+      final app = await service.applyToRoom(student('d'), 'FA26EXE101-01');
+      await service.openApplicationVote(student('a'), app.id);
+      await service.voteApplication(student('a'), app.id, true);
+      // Mo phong don chua kip chuyen Cancel khi ung vien vao thang nhom khac.
+      await db.collection(Collections.memberships).doc('${spaceId}_d').set({
+        'spaceId': spaceId,
+        'uid': 'd',
+        'roomId': 'FA26EXE101-02',
+      });
+      await expectLater(
+        () => service.voteApplication(student('b'), app.id, true),
+        throwsA(isA<BusinessException>()),
+      );
+      expect((await application(app.id)).status, ApplicationStatus.cancelled);
+      expect((await room('FA26EXE101-01')).memberIds, isNot(contains('d')));
     });
 
     test('BR-26: duoc nhan vao mot nhom thi cac don khac chuyen Cancel', () async {
@@ -173,7 +280,7 @@ void main() {
       final app1 = await service.applyToRoom(student('d'), 'FA26EXE101-01');
       final app2 = await service.applyToRoom(student('d'), 'FA26EXE101-02');
 
-      await service.decideApplication(student('a'), app1.id, true);
+      await admit(app1.id);
 
       expect((await application(app1.id)).status, ApplicationStatus.accepted);
       expect((await application(app2.id)).status, ApplicationStatus.cancelled);
@@ -193,10 +300,10 @@ void main() {
       final e = await service.applyToRoom(student('e'), 'FA26EXE101-01');
       final f = await service.applyToRoom(student('f'), 'FA26EXE101-01');
 
-      await service.decideApplication(student('a'), d.id, true); // 4/5
+      await admit(d.id); // 4/5
       expect((await application(e.id)).status, ApplicationStatus.pending); // BR-27
 
-      await service.decideApplication(student('a'), e.id, true); // 5/5
+      await admit(e.id); // 5/5
       expect((await room('FA26EXE101-01')).status, RoomStatus.closed);
       expect((await application(f.id)).status, ApplicationStatus.rejected); // BR-28
     });

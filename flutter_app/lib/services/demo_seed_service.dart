@@ -81,7 +81,7 @@ class DemoSeedService {
       seededRooms++;
     }
 
-    // Ung vien gia vao nhom cua nguoi dung, de test mo vote / nhan / tu choi.
+    // Ung vien gia vao nhom cua nguoi dung, de test mo vote va ket qua vote (BR-25).
     var seededApplications = 0;
     final membership = await _db
         .collection(Collections.memberships)

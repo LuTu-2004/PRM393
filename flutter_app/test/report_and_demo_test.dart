@@ -200,8 +200,9 @@ void main() {
       final pending = await groups.watchPendingApplications('FA26EXE101-01').first;
       expect(pending.length, 3);
 
-      // Leader nhan ung vien demo: thanh vien tang, don khac van giu (BR-27).
-      await groups.decideApplication(me, pending.first.id, true);
+      // Nhom mot nguoi: phieu cua Leader la quyet dinh, thanh vien tang, don khac van giu (BR-25, BR-27).
+      await groups.openApplicationVote(me, pending.first.id);
+      await groups.voteApplication(me, pending.first.id, true);
       final mine = rooms.firstWhere((r) => r.number == 1);
       expect(mine.memberIds, ['me']);
       final after = await groups.watchRoom('FA26EXE101-01').first;

@@ -25,7 +25,7 @@ Quyết định đã chốt thêm:
 | Ngưỡng | Hơn 50% sĩ số (5 → 3, 6 → 4) (BR-16) |
 | Trạng thái Room | `empty` → `open` (dưới ngưỡng, vào thẳng) → `group` (đạt ngưỡng, chỉ Apply) → `closed` (đủ người hoặc Leader đóng tuyển) → `finalized` (chốt sổ) |
 | Leader | Người vào Room trống đầu tiên (BR-15); chuyển quyền (BR-18); bầu Leader cần hơn 50%, hạn 24h (BR-19); Leader rời thì người vào sớm nhất lên thay (BR-20) |
-| Apply | Chỉ người chưa có nhóm (BR-24), không vượt giới hạn (BR-22); Leader mở vote, mỗi thành viên một phiếu, Leader quyết định (BR-25) |
+| Apply | Chỉ người chưa có nhóm (BR-24), không vượt giới hạn (BR-22); Leader mở vote, mỗi thành viên một phiếu; kết quả vote là quyết định: hơn 50% thành viên hiện tại đồng ý thì nhận, không còn đủ phiếu thì Reject, Leader không tự Accept/Reject (BR-25) |
 | Tự động | Vào được một nhóm thì đơn khác → Cancel (BR-26); nhóm đủ hoặc đóng tuyển thì đơn chờ → Reject (BR-28); Group rớt dưới ngưỡng thì quay về Room (BR-17) |
 | Chốt sổ | Khóa cứng, không tự vào/rời (BR-33); sinh viên gửi yêu cầu chuyển nhóm cho giảng viên (BR-36, BR-37) |
 

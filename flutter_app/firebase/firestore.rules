@@ -6,7 +6,7 @@ rules_version = '2';
 // - Chi tai khoan email truong da xac minh moi doc/ghi duoc (BR-01, BR-02).
 // - Ho so ca nhan chi chu so huu doc/ghi; MSSV, nganh, khoa, vai tro khong sua duoc (BR-04).
 // - Room chi do nguoi trong nhom (truoc hoac sau thay doi) sua: vao thang, roi nhom,
-//   Leader nhan nguoi, chuyen quyen.
+//   vote nhan nguoi, chuyen quyen.
 // - Cau hinh mon (Space) do giang vien sua (BR-08).
 //
 // Gioi han da biet: kiem tra nghiep vu chi tiet (nguong, si so, gioi han Apply) chay
@@ -110,11 +110,11 @@ service cloud.firestore {
     // --- Membership: moi sinh vien mot Room trong mot mon (BR-21) -------------------
     match /memberships/{membershipId} {
       allow read: if isSchool();
-      // Tu vao thang, hoac Leader nhan nguoi vao nhom minh.
+      // Tu vao thang, hoac thanh vien bo phieu quyet dinh nhan nguoi vao nhom minh (BR-25).
       allow create: if isAdmin() || (isStudent()
         && membershipId == request.resource.data.spaceId + '_' + request.resource.data.uid
         && (request.resource.data.uid == me()
-          || room(request.resource.data.roomId).leaderId == me()));
+          || me() in room(request.resource.data.roomId).memberIds));
       allow delete: if (isStudent() && resource.data.uid == me()) || isAdmin();
       allow update: if isAdmin();
     }
@@ -130,7 +130,7 @@ service cloud.firestore {
         // Ung vien sua loi nhan / rut don / he thong huy don cua chinh minh.
         || (isStudent() && resource.data.applicantId == me()
           && onlyChanges(['status', 'decidedAt', 'message']))
-        // Thanh vien vote, Leader mo vote / quyet dinh / reject khi du nguoi.
+        // Thanh vien vote va chot ket qua, Leader mo vote, reject khi du nguoi.
         || (isStudent() && me() in room(resource.data.roomId).memberIds)
         // BR-26: ung vien da vao nhom khac thi bat ky ai cung duoc chuyen don sang cancelled.
         || (isStudent()

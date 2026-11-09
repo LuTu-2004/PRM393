@@ -52,7 +52,8 @@ Service được tạo một lần trong `main.dart` và đưa xuống bằng `P
 | `enrollments/{spaceId}_{MSSV}` | Danh sách FAP của từng môn (BR-01) |
 
 ## Các luồng chính
-- **Vào Room hoặc nhận ứng viên:** chạy transaction đọc Room và membership rồi mới ghi, để không vượt sĩ số và không vào hai nhóm. Tự Cancel và Reject đơn (BR-26, BR-28) chạy batch ngay sau transaction, vì transaction không chạy query được. Nếu mất mạng giữa hai bước, đơn có thể chưa đổi trạng thái; khi Leader nhận ứng viên đã có nhóm, `decideApplication` sẽ tự Cancel đơn đó.
+- **Vào Room hoặc nhận ứng viên:** chạy transaction đọc Room và membership rồi mới ghi, để không vượt sĩ số và không vào hai nhóm. Tự Cancel và Reject đơn (BR-26, BR-28) chạy batch ngay sau transaction, vì transaction không chạy query được. Nếu mất mạng giữa hai bước, đơn có thể chưa đổi trạng thái; khi vote đủ phiếu nhận một ứng viên đã có nhóm, `voteApplication` sẽ tự Cancel đơn đó.
+- **Vote đơn Apply (BR-25):** Leader mở vote; mỗi phiếu chạy trong transaction, tính lại kết quả theo thành viên hiện tại và xử lý đơn ngay khi đủ kết quả. Có người rời nhóm sau khi vote thì không có phiếu mới để kích hoạt, nên màn Room hiện nút "Chốt kết quả vote" (`settleApplicationVote`).
 - **Thông báo:** app lấy token, lưu Firestore; `server/send_fcm.py` đọc token bằng Admin SDK và gọi FCM. Khóa service account nằm ngoài repo.
 - **Phân phối sinh viên lẻ:** `DistributionPlanner` lập kế hoạch thuần Dart để giảng viên xem trước; `applyDistribution` ghi trong transaction và dừng nếu dữ liệu vừa đổi.
 - **Import danh sách FAP:** `RosterParser` đọc CSV/`.xlsx` thuần Dart, `RosterDiff` so với danh sách đang lưu để giảng viên xem trước; `importRoster` ghi danh sách, cập nhật số sinh viên và tạo thêm Room còn thiếu. Bộ đọc `.xlsx` tự viết vì các thư viện Excel xung đột với `pdf` về phiên bản `xml`.

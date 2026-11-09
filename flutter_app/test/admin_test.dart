@@ -263,7 +263,9 @@ void main() {
         }
         // Da thanh Group nen nguoi thu 4 phai qua Apply.
         final app = await groups.applyToRoom(student('d'), 'FA26EXE101-01');
-        await groups.decideApplication(student('a'), app.id, true);
+        await groups.openApplicationVote(student('a'), app.id);
+        await groups.voteApplication(student('a'), app.id, true);
+        await groups.voteApplication(student('b'), app.id, true);
         for (final id in ['e', 'f', 'g']) {
           await groups.joinRoom(student(id), 'FA26EXE101-02');
         }

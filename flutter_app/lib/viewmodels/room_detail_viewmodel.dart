@@ -203,11 +203,55 @@ class RoomDetailViewModel extends ChangeNotifier {
     await _analytics.logLeaveRoom(roomId);
   }, 'Bạn đã rời nhóm $roomId.');
 
+  /// BR-25: phieu du ket qua thi don duoc xu ly luon, Leader khong quyet dinh rieng.
   Future<ActionResult> voteApplication(RoomApplication app, bool accept) =>
-      _run('vote_application', () async {
-        await _groups.voteApplication(_currentUser(), app.id, accept);
+      _resolveVote(app, 'vote_application', () async {
+        final status = await _groups.voteApplication(_currentUser(), app.id, accept);
         await _analytics.logVoteApplication(roomId, accept);
+        return status;
       }, accept ? 'Đã vote nhận ${app.applicantName}.' : 'Đã vote bỏ ${app.applicantName}.');
+
+  /// Chot don da du ket qua, vi du co thanh vien roi nhom sau khi vote.
+  Future<ActionResult> settleVote(RoomApplication app) => _resolveVote(
+    app,
+    'settle_application_vote',
+    () => _groups.settleApplicationVote(_currentUser(), app.id),
+    'Chưa đủ kết quả vote.',
+  );
+
+  Future<ActionResult> _resolveVote(
+    RoomApplication app,
+    String name,
+    Future<ApplicationStatus> Function() action,
+    String pendingMessage,
+  ) async {
+    var status = ApplicationStatus.pending;
+    final result = await _run(name, () async {
+      status = await action();
+      if (status != ApplicationStatus.pending) {
+        await _analytics.logDecideApplication(roomId, status == ApplicationStatus.accepted);
+      }
+    }, pendingMessage);
+    if (!result.ok) return result;
+    return switch (status) {
+      ApplicationStatus.accepted => ActionResult.success(
+        'Đủ phiếu: đã nhận ${app.applicantName} vào nhóm.',
+      ),
+      ApplicationStatus.rejected => ActionResult.success(
+        'Không đủ phiếu: đã từ chối ${app.applicantName}.',
+      ),
+      _ => result,
+    };
+  }
+
+  /// Da du ket qua nhung don chua duoc chot, vi du co thanh vien roi nhom sau khi vote.
+  bool canSettleVote(RoomApplication app) =>
+      isMember &&
+      app.voteOpen &&
+      RoomRules.applicationVoteOutcome(votes: app.votes, memberIds: _room?.memberIds ?? const []) !=
+          ElectionOutcome.pending;
+
+  int get votesNeeded => RoomRules.votesNeeded(_room?.memberCount ?? 0);
 
   Future<ActionResult> startElection(RoomMember candidate) => _run('start_election', () async {
     await _groups.startLeaderElection(_currentUser(), roomId, candidate.uid);
@@ -243,12 +287,6 @@ class RoomDetailViewModel extends ChangeNotifier {
     () => _groups.openApplicationVote(_currentUser(), app.id),
     'Đã mở vote cho ${app.applicantName}.',
   );
-
-  Future<ActionResult> decide(RoomApplication app, bool accept) =>
-      _run('decide_application', () async {
-        await _groups.decideApplication(_currentUser(), app.id, accept);
-        await _analytics.logDecideApplication(roomId, accept);
-      }, accept ? 'Đã nhận ${app.applicantName} vào nhóm.' : 'Đã từ chối ${app.applicantName}.');
 
   Future<ActionResult> closeRecruitment() => _run('close_recruitment', () async {
     await _groups.closeRecruitment(_currentUser(), roomId);

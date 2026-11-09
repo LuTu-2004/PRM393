@@ -312,49 +312,67 @@ class GroupService {
     });
   }
 
-  /// BR-25: moi thanh vien mot phieu nhan hoac bo.
-  Future<void> voteApplication(AppUser user, String applicationId, bool accept) async {
-    await _db.runTransaction((tx) async {
-      final app = await _readApplication(tx, applicationId);
-      final room = await _readRoom(tx, app.roomId);
-      if (!room.hasMember(user.uid)) {
-        throw const BusinessException('Chỉ thành viên trong nhóm mới được vote.');
-      }
-      if (!app.isPending) throw const BusinessException('Đơn này không còn ở trạng thái chờ.');
-      if (!app.voteOpen) throw const BusinessException('Leader chưa mở vote cho ứng viên này.');
-      if (app.hasVoted(user.uid)) {
-        throw const BusinessException('Bạn đã vote cho ứng viên này rồi.');
-      }
-      tx.update(_applications.doc(applicationId), {'votes.${user.uid}': accept});
-    });
-  }
+  /// BR-25: moi thanh vien mot phieu nhan hoac bo. Phieu du ket qua thi don duoc xu ly luon.
+  Future<ApplicationStatus> voteApplication(AppUser user, String applicationId, bool accept) =>
+      _resolveVote(user, applicationId, vote: accept);
 
-  /// BR-25 (tam thoi Leader quyet dinh), BR-26, BR-27, BR-28.
-  Future<void> decideApplication(AppUser user, String applicationId, bool accept) async {
+  /// Chot don da du ket qua ma khong co phieu moi, vi du co thanh vien roi nhom sau khi vote.
+  Future<ApplicationStatus> settleApplicationVote(AppUser user, String applicationId) =>
+      _resolveVote(user, applicationId);
+
+  /// BR-25, BR-26, BR-27, BR-28. Tra ve trang thai don sau khi xu ly.
+  Future<ApplicationStatus> _resolveVote(AppUser user, String applicationId, {bool? vote}) async {
+    var result = ApplicationStatus.pending;
     String? applicantId;
     var roomNowClosed = false;
     var applicantAlreadyInGroup = false;
     late String roomId;
 
     await _db.runTransaction((tx) async {
+      // Transaction co the chay lai nen phai dat lai ket qua cua lan truoc.
+      result = ApplicationStatus.pending;
+      applicantId = null;
+      roomNowClosed = false;
+      applicantAlreadyInGroup = false;
+
       final app = await _readApplication(tx, applicationId);
       roomId = app.roomId;
       final room = await _readRoom(tx, app.roomId);
-      _requireLeader(room, user.uid);
+      if (!room.hasMember(user.uid)) {
+        throw const BusinessException('Chỉ thành viên trong nhóm mới được vote.');
+      }
       if (!app.isPending) throw const BusinessException('Đơn này không còn ở trạng thái chờ.');
-
-      if (!accept) {
-        tx.update(_applications.doc(applicationId), {
-          'status': ApplicationStatus.rejected.name,
-          'decidedAt': writeDate(_now()),
-        });
-        return;
+      if (!app.voteOpen) throw const BusinessException('Leader chưa mở vote cho ứng viên này.');
+      if (vote != null && app.hasVoted(user.uid)) {
+        throw const BusinessException('Bạn đã vote cho ứng viên này rồi.');
       }
 
       final spaceSnap = await tx.get(_spaces.doc(app.spaceId));
       if (!spaceSnap.exists) throw const BusinessException('Không tìm thấy học kỳ của môn.');
       final space = Space.fromMap(spaceSnap.id, spaceSnap.data()!);
       _requireRegistrationOpen(space);
+
+      final ballot = <String, dynamic>{'votes.${user.uid}': ?vote};
+      final outcome = RoomRules.applicationVoteOutcome(
+        votes: {...app.votes, user.uid: ?vote},
+        memberIds: room.memberIds,
+      );
+
+      if (outcome == ElectionOutcome.pending) {
+        if (ballot.isNotEmpty) tx.update(_applications.doc(applicationId), ballot);
+        return;
+      }
+
+      if (outcome == ElectionOutcome.failed) {
+        tx.update(_applications.doc(applicationId), {
+          ...ballot,
+          'status': ApplicationStatus.rejected.name,
+          'decidedAt': writeDate(_now()),
+        });
+        result = ApplicationStatus.rejected;
+        return;
+      }
+
       if (room.status == RoomStatus.closed || room.freeSlots == 0) {
         throw const BusinessException('Nhóm đã đủ người hoặc đã đóng tuyển.');
       }
@@ -364,6 +382,7 @@ class GroupService {
         // Ung vien da vao nhom khac nhung don chua kip chuyen Cancel.
         // Khong throw trong transaction (se mat lenh ghi), bao loi sau khi commit.
         tx.update(_applications.doc(applicationId), {
+          ...ballot,
           'status': ApplicationStatus.cancelled.name,
           'decidedAt': writeDate(_now()),
         });
@@ -391,9 +410,11 @@ class GroupService {
         'joinedAt': writeDate(_now()),
       });
       tx.update(_applications.doc(applicationId), {
+        ...ballot,
         'status': ApplicationStatus.accepted.name,
         'decidedAt': writeDate(_now()),
       });
+      result = ApplicationStatus.accepted;
       applicantId = app.applicantId;
       roomNowClosed = updated.status == RoomStatus.closed;
     });
@@ -407,6 +428,7 @@ class GroupService {
     if (roomNowClosed) {
       await _rejectPendingApplications(roomId); // BR-28; neu chua du thi giu nguyen (BR-27)
     }
+    return result;
   }
 
   /// BR-28: Leader dong tuyen, moi don dang cho chuyen thanh Reject.

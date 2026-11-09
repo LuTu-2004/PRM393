@@ -120,7 +120,7 @@ class _HeaderCard extends StatelessWidget {
     RoomStatus.empty => 'Room trống. Người vào đầu tiên sẽ làm Leader.',
     RoomStatus.open =>
       'Chưa đủ ngưỡng ${room.threshold} người: sinh viên chưa có nhóm vào thẳng, không cần duyệt.',
-    RoomStatus.group => 'Đã thành Group: chỉ vào được bằng đơn Apply, Leader quyết định.',
+    RoomStatus.group => 'Đã thành Group: chỉ vào được bằng đơn Apply, nhóm vote quyết định.',
     RoomStatus.closed => 'Nhóm đã đủ người hoặc Leader đã đóng tuyển.',
     RoomStatus.finalized => 'Đã chốt sổ: thành viên bị khóa vào nhóm.',
   };
@@ -198,7 +198,7 @@ class _OutsiderActions extends StatelessWidget {
       );
     } else if (vm.myPendingApplication != null) {
       children.addAll([
-        Text('Bạn đã gửi đơn vào nhóm này, đang chờ Leader quyết định.', style: text.bodyMedium),
+        Text('Bạn đã gửi đơn vào nhóm này, đang chờ nhóm vote.', style: text.bodyMedium),
         const SizedBox(height: AppSpacing.sm),
         OutlinedButton(
           onPressed: vm.busy
@@ -365,7 +365,7 @@ class _ElectionCard extends StatelessWidget {
   }
 }
 
-/// BR-25: don Apply dang cho, thanh vien vote va Leader quyet dinh.
+/// BR-25: don Apply dang cho, Leader mo vote, ket qua vote cua nhom la quyet dinh.
 class _ApplicationsSection extends StatelessWidget {
   const _ApplicationsSection();
 
@@ -434,7 +434,8 @@ class _ApplicationTile extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Text(
             app.voteOpen
-                ? 'Vote: ${app.acceptVotes} nhận · ${app.rejectVotes} bỏ'
+                ? 'Vote: ${app.acceptVotes} nhận · ${app.rejectVotes} bỏ · '
+                      'cần ${vm.votesNeeded} phiếu nhận để vào nhóm'
                 : 'Leader chưa mở vote cho ứng viên này.',
             style: text.bodySmall,
           ),
@@ -443,7 +444,12 @@ class _ApplicationTile extends StatelessWidget {
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
             children: [
-              if (app.voteOpen && !app.hasVoted(vm.myUid)) ...[
+              if (vm.canSettleVote(app))
+                FilledButton(
+                  onPressed: vm.busy ? null : () => _act(context, () => vm.settleVote(app)),
+                  child: const Text('Chốt kết quả vote'),
+                )
+              else if (app.voteOpen && !app.hasVoted(vm.myUid)) ...[
                 OutlinedButton(
                   onPressed: vm.busy
                       ? null
@@ -462,30 +468,6 @@ class _ApplicationTile extends StatelessWidget {
                   onPressed: vm.busy ? null : () => _act(context, () => vm.openVote(app)),
                   child: const Text('Mở vote'),
                 ),
-              if (vm.isLeader) ...[
-                TextButton(
-                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                  onPressed: vm.busy
-                      ? null
-                      : () async {
-                          final ok = await confirm(
-                            context,
-                            title: 'Từ chối ${app.applicantName}?',
-                            message: 'Đơn sẽ chuyển thành Reject.',
-                            confirmLabel: 'Từ chối',
-                            destructive: true,
-                          );
-                          if (ok && context.mounted) {
-                            await _act(context, () => vm.decide(app, false));
-                          }
-                        },
-                  child: const Text('Từ chối'),
-                ),
-                FilledButton(
-                  onPressed: vm.busy ? null : () => _act(context, () => vm.decide(app, true)),
-                  child: const Text('Nhận vào nhóm'),
-                ),
-              ],
             ],
           ),
         ],

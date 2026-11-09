@@ -14,7 +14,7 @@
 | 1 | `01_google_sign_in` | Vào màn chính | Chưa đăng nhập | Chưa chạy |
 | 2 | `02_flow1_join_room` | Vào Room, có nút Rời nhóm | Chưa có nhóm | Chưa chạy |
 | 3 | `03_flow2_apply_group` | Đơn được gửi | Chưa có nhóm | Chưa chạy |
-| 4 | `04_flow3_leader_decides` | Ứng viên vào nhóm, 2/5 | Leader Room 01, có đơn demo | Chưa chạy |
+| 4 | `04_flow3_vote_decides` | Vote đủ phiếu thì ứng viên vào nhóm, 2/5 | Leader Room 01, một mình trong nhóm, có đơn demo | Chưa chạy |
 | 5 | `05_error_apply_limit` | Báo lỗi đơn thứ 4, khôi phục | Có 3 đơn chờ | Chưa chạy |
 | 6 | `06_crud_application` | Tạo, sửa, rút đơn | Chưa có nhóm | Chưa chạy |
 | 7 | `07_navigate_top_level` | Nội dung từng tab | Đã đăng nhập | Chưa chạy |

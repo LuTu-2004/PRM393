@@ -71,6 +71,20 @@ class RoomRules {
     if (maxPossibleYes * 2 <= memberCount) return ElectionOutcome.failed;
     return ElectionOutcome.pending;
   }
+
+  /// BR-25: ket qua vote la quyet dinh, dung cung nguong hon 50% voi BR-19.
+  /// Chi tinh phieu cua thanh vien con trong nhom, nguoi da roi nhom khong con duoc tinh.
+  static ElectionOutcome applicationVoteOutcome({
+    required Map<String, bool> votes,
+    required List<String> memberIds,
+  }) {
+    final counted = memberIds.where(votes.containsKey);
+    final yes = counted.where((uid) => votes[uid]!).length;
+    return electionOutcome(yes: yes, no: counted.length - yes, memberCount: memberIds.length);
+  }
+
+  /// BR-25: so phieu nhan can co de ung vien duoc vao nhom.
+  static int votesNeeded(int memberCount) => memberCount ~/ 2 + 1;
 }
 
 enum ElectionOutcome { pending, passed, failed }
