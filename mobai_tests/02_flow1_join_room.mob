@@ -1,0 +1,17 @@
+# Tags: flow1
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Luong 1: vao thang Room chua du nguong. Bat dau: chua co nhom, da tao du lieu demo.
+tap "Vào thẳng được"
+wait stable 2000
+tap "FA26EXE101-07"
+wait stable 2000
+assert exists "Room – vào thẳng"
+tap "Vào Room này"
+wait stable 3000
+assert exists "Bạn đã vào FA26EXE101-07."
+assert exists "Rời nhóm"

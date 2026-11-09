@@ -1,0 +1,33 @@
+# Tags: crud
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Tao, sua, xoa main entity (don Apply). Bat dau: chua co nhom, chua Apply vao 06.
+tap "Nhận Apply"
+wait stable 2000
+tap "FA26EXE101-06"
+wait stable 2000
+tap "Gửi đơn Apply"
+wait stable 1000
+tap "Gửi đơn"
+wait stable 3000
+tap "Đơn"
+wait stable 2000
+assert exists "FA26EXE101-06"
+tap "FA26EXE101-06"
+wait stable 2000
+assert exists "Chi tiết đơn Apply"
+tap "Sửa lời nhắn"
+wait stable 1000
+type "Loi nhan da sua" near "Lời nhắn cho nhóm" below
+tap "Lưu"
+wait stable 3000
+assert exists "Loi nhan da sua"
+tap "Rút đơn"
+wait stable 1000
+tap "Rút đơn"
+wait stable 3000
+assert exists "Đã rút"

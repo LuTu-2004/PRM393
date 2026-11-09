@@ -1,300 +1,237 @@
-import 'package:firebase_core/firebase_core.dart';
+import 'dart:async';
+
 import 'package:exe_matching/firebase_options.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:exe_matching/core/config/app_config.dart';
-import 'package:exe_matching/core/di/service_locator.dart';
-import 'package:exe_matching/services/firestore_seed_service.dart';
+import 'package:exe_matching/screens/home_shell.dart';
+import 'package:exe_matching/screens/lecturer_notice_screen.dart';
+import 'package:exe_matching/screens/login_screen.dart';
+import 'package:exe_matching/screens/notification_center_screen.dart';
+import 'package:exe_matching/screens/policy_screen.dart';
+import 'package:exe_matching/screens/profile_screen.dart';
+import 'package:exe_matching/screens/room_detail_screen.dart';
+import 'package:exe_matching/services/analytics_service.dart';
+import 'package:exe_matching/services/auth_service.dart';
 import 'package:exe_matching/services/crashlytics_service.dart';
-import 'package:exe_matching/services/remote_config_service.dart';
+import 'package:exe_matching/services/demo_seed_service.dart';
+import 'package:exe_matching/services/file_storage_service.dart';
+import 'package:exe_matching/services/group_service.dart';
+import 'package:exe_matching/services/report_pdf_builder.dart';
+import 'package:exe_matching/services/report_service.dart';
 import 'package:exe_matching/services/notification_service.dart';
-import 'package:exe_matching/core/theme/app_colors.dart';
-import 'package:exe_matching/core/theme/app_theme.dart';
-import 'package:exe_matching/features/room/bloc/room_bloc.dart';
-import 'package:exe_matching/features/room/screens/room_list_screen.dart';
-import 'package:exe_matching/repositories/interfaces/room_repository.dart';
-import 'package:exe_matching/repositories/interfaces/user_repository.dart';
-import 'package:exe_matching/repositories/interfaces/invitation_repository.dart';
-import 'package:exe_matching/features/matching/bloc/matching_bloc.dart';
-import 'package:exe_matching/features/matching/screens/matching_screen.dart';
-import 'package:exe_matching/features/invitation/bloc/invitation_bloc.dart';
-import 'package:exe_matching/features/invitation/screens/invitations_screen.dart';
-import 'package:exe_matching/features/profile/bloc/profile_bloc.dart';
-import 'package:exe_matching/features/profile/screens/profile_screen.dart';
-import 'package:exe_matching/features/notification/screens/notification_center_screen.dart';
+import 'package:exe_matching/services/remote_config_service.dart';
+import 'package:exe_matching/services/user_service.dart';
+import 'package:exe_matching/theme/app_theme.dart';
+import 'package:exe_matching/viewmodels/auth_viewmodel.dart';
+import 'package:exe_matching/viewmodels/notification_viewmodel.dart';
+import 'package:exe_matching/viewmodels/space_viewmodel.dart';
+import 'package:exe_matching/widgets/state_views.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import 'package:exe_matching/repositories/interfaces/vote_repository.dart';
-import 'package:exe_matching/features/vote/bloc/vote_bloc.dart';
-import 'package:exe_matching/repositories/interfaces/coordination_repository.dart';
-import 'package:exe_matching/features/coordination/bloc/coordination_bloc.dart';
-import 'package:exe_matching/repositories/interfaces/auth_repository.dart';
-import 'package:exe_matching/features/auth/bloc/auth_bloc.dart';
-import 'package:exe_matching/features/auth/bloc/auth_event.dart';
-import 'package:exe_matching/features/auth/bloc/auth_state.dart';
-import 'package:exe_matching/features/auth/screens/login_screen.dart';
-import 'package:exe_matching/features/coordination/screens/moderator_dashboard_screen.dart';
-
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Khoi tao Firebase ket noi voi project exe-team-matching-70774
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint('>>> Firebase.initializeApp SUCCESS');
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   } catch (e) {
-    debugPrint('>>> Firebase.initializeApp error: $e');
+    runApp(_StartupErrorApp(error: e.toString()));
+    return;
   }
 
-  // [Lab 3] Khoi tao Crashlytics — bat FlutterError va Dart async errors
-  await CrashlyticsService.initialize();
+  final crashlytics = CrashlyticsService.firebase()..installGlobalHandlers();
+  final remoteConfig = RemoteConfigService.firebase();
+  final notifications = NotificationService.firebase();
+  // Khong chan man hinh dau neu mang cham: Remote Config da co gia tri mac dinh.
+  unawaited(remoteConfig.initialize());
+  await notifications.initialize();
 
-  // [Lab 3] Khoi tao Remote Config — tai cau hinh tu Firebase Console
-  await RemoteConfigService.initialize();
-
-  // [Lab 3] Khoi tao FCM — xu ly push notification 3 trang thai
-  await NotificationService.initialize();
-
-  // Khoi tao Dependency Injection (Mock Data / Firebase)
-  setupServiceLocator();
-
-  // Neu su dung Firebase that, tu dong kiem tra va nap du lieu mau len Firestore neu rong
-  if (!AppConfig.USE_MOCK_DATA) {
-    try {
-      debugPrint('>>> Seeding Firestore data...');
-      await FirestoreSeedService().seedInitialDataIfEmpty();
-      debugPrint('>>> Seeding Firestore data completed');
-    } catch (e) {
-      debugPrint('>>> Seeding Firestore error: $e');
-    }
-  }
-
-  runApp(const ExeMatchingApp());
+  runApp(
+    ExeMatchingApp(
+      crashlytics: crashlytics,
+      remoteConfig: remoteConfig,
+      notifications: notifications,
+      analytics: AnalyticsService.firebase(),
+      auth: AuthService(),
+      users: UserService(),
+      groups: GroupService(),
+    ),
+  );
 }
 
 class ExeMatchingApp extends StatelessWidget {
-  const ExeMatchingApp({super.key});
+  final CrashlyticsService crashlytics;
+  final RemoteConfigService remoteConfig;
+  final NotificationService notifications;
+  final AnalyticsService analytics;
+  final AuthService auth;
+  final UserService users;
+  final GroupService groups;
+
+  const ExeMatchingApp({
+    super.key,
+    required this.crashlytics,
+    required this.remoteConfig,
+    required this.notifications,
+    required this.analytics,
+    required this.auth,
+    required this.users,
+    required this.groups,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
+    final observer = analytics.observer;
+    return MultiProvider(
       providers: [
-        BlocProvider<RoomBloc>(
-          create: (_) => RoomBloc(roomRepository: getIt<RoomRepository>()),
-        ),
-        BlocProvider<MatchingBloc>(
-          create: (_) => MatchingBloc(
-            roomRepository: getIt<RoomRepository>(),
-            userRepository: getIt<UserRepository>(),
-            invitationRepository: getIt<InvitationRepository>(),
+        // Services: lop duy nhat goi Firebase.
+        Provider.value(value: auth),
+        Provider.value(value: users),
+        Provider.value(value: groups),
+        Provider(create: (_) => DemoSeedService()),
+        Provider(create: (_) => ReportService()),
+        Provider(create: (_) => FileStorageService()),
+        Provider(create: (_) => ReportPdfBuilder()),
+        Provider.value(value: analytics),
+        Provider.value(value: crashlytics),
+        Provider.value(value: notifications),
+        ChangeNotifierProvider.value(value: remoteConfig),
+        // ViewModels dung chung.
+        ChangeNotifierProvider(
+          create: (_) => AuthViewModel(
+            auth: auth,
+            users: users,
+            analytics: analytics,
+            crashlytics: crashlytics,
+            notifications: notifications,
           ),
         ),
-        BlocProvider<InvitationBloc>(
-          create: (_) => InvitationBloc(
-            invitationRepository: getIt<InvitationRepository>(),
-            roomRepository: getIt<RoomRepository>(),
+        ChangeNotifierProvider(create: (_) => NotificationViewModel(notifications)),
+        ChangeNotifierProxyProvider<AuthViewModel, SpaceViewModel>(
+          create: (_) => SpaceViewModel(
+            groups: groups,
+            remoteConfig: remoteConfig,
+            analytics: analytics,
+            crashlytics: crashlytics,
           ),
-        ),
-        BlocProvider<ProfileBloc>(
-          create: (_) => ProfileBloc(
-            userRepository: getIt<UserRepository>(),
-          ),
-        ),
-        BlocProvider<VoteBloc>(
-          create: (_) => VoteBloc(
-            voteRepository: getIt<VoteRepository>(),
-            roomRepository: getIt<RoomRepository>(),
-          ),
-        ),
-        BlocProvider<CoordinationBloc>(
-          create: (_) => CoordinationBloc(
-            coordinationRepository: getIt<CoordinationRepository>(),
-          ),
-        ),
-        BlocProvider<AuthBloc>(
-          create: (_) => AuthBloc(
-            authRepository: getIt<AuthRepository>(),
-          )..add(CheckAuthStatusEvent()),
+          update: (_, auth, space) => space!..bind(auth.user),
         ),
       ],
       child: MaterialApp(
         title: 'EXE Team Matching',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        home: BlocBuilder<AuthBloc, AuthState>(
-          builder: (context, state) {
-            if (state is AuthenticatedState) {
-              if (state.isModerator) {
-                return const ModeratorDashboardScreen();
-              }
-              return const MainShellScreen();
-            }
-            if (state is NeedsTermsAcceptanceState) {
-              return const LoginScreen();
-            }
-            if (state is AuthLoadingState) {
-              return const Scaffold(
-                backgroundColor: Color(0xFF0F172A),
-                body: Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                ),
-              );
-            }
-            return const LoginScreen();
-          },
-        ),
+        theme: AppTheme.light,
+        navigatorObservers: [?observer],
+        home: const AuthGate(),
       ),
     );
   }
 }
 
-class MainShellScreen extends StatefulWidget {
-  const MainShellScreen({super.key});
-
-  @override
-  State<MainShellScreen> createState() => _MainShellScreenState();
-}
-
-class _MainShellScreenState extends State<MainShellScreen> {
-  int _currentIndex = 0;
-
-  final List<Widget> _screens = const [
-    RoomListScreen(),
-    MatchingScreen(),
-    InvitationsScreen(),
-    ProfileScreen(),
-  ];
+/// Chon man hinh theo trang thai dang nhap. Chua dang nhap chi thay man Login.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      // [Lab 3] Nut thong bao FCM tren AppBar
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: AppColors.cardBorder, width: 1)),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.textSecondary,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.explore_outlined),
-              activeIcon: Icon(Icons.explore),
-              label: 'Khám phá',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.auto_awesome_outlined),
-              activeIcon: Icon(Icons.auto_awesome),
-              label: 'Matching',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.mail_outline),
-              activeIcon: Icon(Icons.mail),
-              label: 'Lời mời',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Hồ sơ',
-            ),
-          ],
-        ),
-      ),
-      // [Lab 3] Floating Action Button mo Notification Center
-      floatingActionButton: FloatingActionButton.small(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const NotificationCenterScreen()),
-          );
-        },
-        backgroundColor: AppColors.primary,
-        child: Stack(
-          children: [
-            const Icon(Icons.notifications_outlined, color: Colors.white, size: 22),
-            // Badge hien thi so thong bao chua doc
-            if (NotificationService.history.isNotEmpty)
-              Positioned(
-                right: 0,
-                top: 0,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        tooltip: 'Thông báo',
-      ),
-    );
-  }
-}
-
-class _PlaceholderTab extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final String description;
-
-  const _PlaceholderTab({
-    required this.title,
-    required this.icon,
-    required this.description,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 48, color: AppColors.primary),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                description,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                  height: 1.4,
-                ),
-              ),
-            ],
+    final vm = context.watch<AuthViewModel>();
+    switch (vm.status) {
+      case AuthStatus.initializing:
+      case AuthStatus.loadingProfile:
+        return const Scaffold(body: LoadingView());
+      case AuthStatus.signedOut:
+        return const LoginScreen();
+      case AuthStatus.profileError:
+        return Scaffold(
+          appBar: AppBar(
+            actions: [TextButton(onPressed: vm.signOut, child: const Text('Đăng xuất'))],
           ),
+          body: ErrorView(
+            message: vm.error ?? 'Không tải được hồ sơ.',
+            onRetry: vm.retryLoadProfile,
+          ),
+        );
+      case AuthStatus.signedIn:
+        final user = vm.user!;
+        if (user.isLecturer) return const LecturerNoticeScreen();
+        if (!user.hasAcceptedPolicy) return const PolicyScreen(); // BR-34
+        if (!user.isProfileComplete) return const ProfileScreen(setupMode: true); // BR-07
+        return const _NotificationRouter(child: HomeShell());
+    }
+  }
+}
+
+/// Mo man hinh phu hop khi nguoi dung cham thong bao (chi khi da dang nhap).
+class _NotificationRouter extends StatefulWidget {
+  final Widget child;
+  const _NotificationRouter({required this.child});
+
+  @override
+  State<_NotificationRouter> createState() => _NotificationRouterState();
+}
+
+class _NotificationRouterState extends State<_NotificationRouter> with WidgetsBindingObserver {
+  StreamSubscription<AppNotification>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final vm = context.read<NotificationViewModel>();
+    _sub = vm.opened.listen(_open);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pending = vm.takePendingOpen();
+      if (pending != null) _open(pending);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Thong bao nhan luc app o nen duoc handler luu rieng, doc lai khi quay ve.
+    if (state == AppLifecycleState.resumed) {
+      unawaited(context.read<NotificationViewModel>().reload());
+    }
+  }
+
+  void _open(AppNotification n) {
+    if (!mounted) return;
+    context.read<NotificationViewModel>().markRead(n);
+    final roomId = n.roomId;
+    if (roomId != null) {
+      RoomDetailScreen.open(context, roomId);
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          settings: const RouteSettings(name: 'notification_center'),
+          builder: (_) => const NotificationCenterScreen(),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+class _StartupErrorApp extends StatelessWidget {
+  final String error;
+  const _StartupErrorApp({required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: EmptyView(
+          icon: Icons.error_outline,
+          title: 'Không khởi động được Firebase',
+          message: error,
         ),
       ),
     );

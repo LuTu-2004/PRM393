@@ -1,78 +1,100 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:exe_matching/config/app_config.dart';
+import 'package:exe_matching/models/firestore_utils.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:exe_matching/core/config/app_config.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
-/// Service bat va ghi log loi Crashlytics theo tieu chi Lab 3
-/// Yeu cau:
-///   - 1 loi da xu ly (non-fatal) tu luong loi thuc te
-///   - 1 crash thu nghiem co chu dich (chi trong debug/demo area)
-///   - Gan user ID va custom diagnostic key
+/// Ghi loi len Firebase Crashlytics.
 class CrashlyticsService {
-  /// Khoi tao Crashlytics — goi trong main()
-  /// - Bat Flutter framework errors
-  /// - Bat Dart async errors
-  static Future<void> initialize() async {
-    if (AppConfig.USE_MOCK_DATA) return;
+  final FirebaseCrashlytics? _crashlytics;
 
+  final FirebaseFirestore? _firestore;
+  String? _uid;
+
+  CrashlyticsService({this._crashlytics, this._firestore});
+
+  factory CrashlyticsService.firebase() => CrashlyticsService(
+    crashlytics: FirebaseCrashlytics.instance,
+    firestore: FirebaseFirestore.instance,
+  );
+
+  factory CrashlyticsService.disabled() => CrashlyticsService();
+
+  /// Bat loi Flutter framework va loi async chua xu ly. Goi mot lan trong main().
+  void installGlobalHandlers() {
+    final crashlytics = _crashlytics;
+    if (crashlytics == null || kIsWeb) return;
+    FlutterError.onError = crashlytics.recordFlutterFatalError;
+    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+      crashlytics.recordError(error, stack, fatal: true);
+      return true;
+    };
+  }
+
+  Future<void> setUser(String? uid, {String? role}) async {
+    _uid = uid;
+    await _reportPreviousCrash();
+    final crashlytics = _crashlytics;
+    if (crashlytics == null) return;
     try {
-      // Bat tat ca loi Flutter framework
-      FlutterError.onError = (errorDetails) {
-        FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
-      };
+      await crashlytics.setUserIdentifier(uid ?? '');
+      if (role != null) await crashlytics.setCustomKey('user_role', role);
+    } catch (_) {}
+  }
 
-      // Bat cac loi Dart async khong duoc xu ly
-      WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
+  /// Loi da xu ly (non-fatal), vi du mot thao tac Firestore that bai.
+  Future<void> recordHandled(Object error, StackTrace? stack, {required String action}) async {
+    final crashlytics = _crashlytics;
+    if (crashlytics == null) return;
+    try {
+      await crashlytics.setCustomKey('last_action', action);
+      await crashlytics.recordError(error, stack, reason: action, fatal: false);
+    } catch (_) {}
+    await _writeLog(fatal: false, action: action, message: error.toString());
+  }
+
+  /// Web admin khong doc truc tiep duoc Crashlytics, nen app ghi them mot ban tom tat.
+  Future<void> _writeLog({
+    required bool fatal,
+    required String action,
+    required String message,
+  }) async {
+    final firestore = _firestore;
+    if (firestore == null || _uid == null) return;
+    try {
+      await firestore.collection(Collections.crashLogs).add({
+        'uid': _uid,
+        'fatal': fatal,
+        'action': action,
+        'message': message.length > 300 ? message.substring(0, 300) : message,
+        'createdAt': writeDate(DateTime.now()),
+      });
     } catch (e) {
-      debugPrint('CrashlyticsService initialize error: $e');
+      debugPrint('Write crash log error: $e');
     }
   }
 
-  /// Ghi log loi KHONG gay dung app (non-fatal handled error)
-  /// Dung trong catch block cua cac luong nghiep vu chinh
-  static Future<void> recordError(
-    dynamic exception,
-    StackTrace? stack, {
-    String? reason,
-    String? screen,
-  }) async {
-    if (AppConfig.USE_MOCK_DATA) return;
+  bool _previousCrashChecked = false;
+
+  /// Lan chay truoc bi crash thi app da chet, chi ghi duoc o lan mo sau khi co nguoi dung.
+  Future<void> _reportPreviousCrash() async {
+    final crashlytics = _crashlytics;
+    if (crashlytics == null || _uid == null || _previousCrashChecked) return;
+    _previousCrashChecked = true;
     try {
-      if (screen != null) {
-        await FirebaseCrashlytics.instance.setCustomKey('last_screen', screen);
+      if (await crashlytics.didCrashOnPreviousExecution()) {
+        await _writeLog(
+          fatal: true,
+          action: 'previous_run',
+          message: 'Ứng dụng bị crash ở lần chạy trước. Chi tiết xem trên Firebase Crashlytics.',
+        );
       }
-      await FirebaseCrashlytics.instance.recordError(
-        exception,
-        stack,
-        reason: reason,
-        fatal: false,
-      );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Check previous crash error: $e');
+    }
   }
 
-  /// Gan User ID sau khi dang nhap (Lab 3: phai co user ID)
-  static Future<void> setUserIdentifier(String uid) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseCrashlytics.instance.setUserIdentifier(uid);
-      await FirebaseCrashlytics.instance.setCustomKey('user_uid', uid);
-    } catch (_) {}
-  }
-
-  /// Gan custom key de chan doan (Lab 3: can it nhat 1 custom key)
-  static Future<void> setCustomKey(String key, dynamic value) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseCrashlytics.instance.setCustomKey(key, value.toString());
-    } catch (_) {}
-  }
-
-  /// [CHI DEMO] Tao crash co chu dich de kiem tra Crashlytics hoat dong
-  /// KHONG goi method nay trong luong su dung binh thuong!
-  /// Chi dung trong khu vuc demo tren Moderator Dashboard
-  static void triggerTestCrash() {
-    FirebaseCrashlytics.instance.crash();
-  }
+  /// CHI DE DEMO: gay crash co chu dich de kiem tra Crashlytics.
+  void testCrash() => _crashlytics?.crash();
 }

@@ -1,0 +1,16 @@
+# Tags: smoke, auth
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Bat dau: chua dang nhap, tai khoan test da co tren may ao, ho so da hoan thanh.
+# Email truyen qua tham so test_run, khong commit: test_email
+assert exists "Đăng nhập bằng Google"
+tap "Đăng nhập bằng Google"
+wait stable 5000
+tap "${test_email}"
+wait stable 8000
+assert exists "Nhóm của tôi"
+assert exists "Hồ sơ"

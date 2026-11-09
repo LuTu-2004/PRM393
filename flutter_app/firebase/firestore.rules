@@ -1,0 +1,152 @@
+rules_version = '2';
+
+// Firestore Security Rules - EXE Team Matching (PRM393 Lab 3)
+//
+// Nguyen tac:
+// - Chi tai khoan email truong da xac minh moi doc/ghi duoc (BR-01, BR-02).
+// - Ho so ca nhan chi chu so huu doc/ghi; MSSV, nganh, khoa, vai tro khong sua duoc (BR-04).
+// - Room chi do nguoi trong nhom (truoc hoac sau thay doi) sua: vao thang, roi nhom,
+//   Leader nhan nguoi, chuyen quyen.
+// - Cau hinh mon (Space) do giang vien sua (BR-08).
+//
+// Gioi han da biet: kiem tra nghiep vu chi tiet (nguong, si so, gioi han Apply) chay
+// o client trong transaction. Muon chan hoan toan client gian lan can chuyen cac thao tac
+// nay len Cloud Functions / backend Web.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    function isStudent() {
+      return signedIn() && email().matches('.*@fpt[.]edu[.]vn$');
+    }
+    function isLecturer() {
+      return signedIn() && email().matches('.*@fe[.]edu[.]vn$');
+    }
+    function isSchool() {
+      return isStudent() || isLecturer();
+    }
+    function me() {
+      return request.auth.uid;
+    }
+    // Tai khoan duy nhat duoc tao du lieu demo (Room co thanh vien gia, don Apply gia).
+    // XOA ham nay va cac cho dung no truoc khi nop bai neu khong con can demo.
+    function isAdmin() {
+      return isLecturer() || isDemoAdmin();
+    }
+    function isDemoAdmin() {
+      return signedIn() && email() == 'trongtmse185045@fpt.edu.vn';
+    }
+    function room(roomId) {
+      return get(/databases/$(database)/documents/rooms/$(roomId)).data;
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // --- Ho so nguoi dung ---------------------------------------------------
+    match /users/{userId} {
+      // Giang vien doc ho so de xem sinh vien le va can bang ky nang (BR-30, BR-32).
+      allow read: if isAdmin() || (isSchool() && me() == userId);
+      // isDemoAdmin: tao sinh vien gia de thu phan phoi.
+      allow create: if isDemoAdmin() || (isSchool() && me() == userId
+        && request.resource.data.email == email()
+        && request.resource.data.role == (isLecturer() ? 'lecturer' : 'student'));
+      allow update: if isSchool() && me() == userId
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['email', 'role', 'studentCode', 'major', 'cohort', 'createdAt']);
+      allow delete: if false;
+
+      // FCM token cua cac thiet bi, chi chu so huu. Server dung Admin SDK nen khong qua rules.
+      match /fcm_tokens/{token} {
+        allow read, write: if isSchool() && me() == userId;
+      }
+
+      // Metadata bao cao PDF, chi chu so huu.
+      match /reports/{reportId} {
+        allow read: if isSchool() && me() == userId;
+        allow create: if isSchool() && me() == userId && request.resource.data.ownerId == me();
+        allow update, delete: if false;
+      }
+    }
+
+    // --- Space: mon trong ky + cau hinh giang vien -----------------------------
+    match /spaces/{spaceId} {
+      allow read: if isSchool();
+      // App sinh vien chi tao Space mac dinh khi chua co (demo khi chua co ban Web).
+      allow create: if isSchool() && request.resource.data.finalized == false;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Room -------------------------------------------------------------------
+    match /rooms/{roomId} {
+      allow read: if isSchool();
+      // Room moi tao luon trong (BR-09 tu dong tao Room).
+      allow create: if isAdmin() || (isSchool() && request.resource.data.memberIds.size() == 0);
+      allow update: if isAdmin()
+        || (isStudent()
+          && resource.data.finalized == false
+          && (me() in resource.data.memberIds || me() in request.resource.data.memberIds));
+      allow delete: if isAdmin();
+
+      // BR-19: bau Leader, chi thanh vien nhom.
+      match /elections/{electionId} {
+        allow read: if isSchool();
+        allow create, update: if isStudent() && me() in room(roomId).memberIds;
+      }
+    }
+
+    // --- Membership: moi sinh vien mot Room trong mot mon (BR-21) -------------------
+    match /memberships/{membershipId} {
+      allow read: if isSchool();
+      // Tu vao thang, hoac Leader nhan nguoi vao nhom minh.
+      allow create: if isAdmin() || (isStudent()
+        && membershipId == request.resource.data.spaceId + '_' + request.resource.data.uid
+        && (request.resource.data.uid == me()
+          || room(request.resource.data.roomId).leaderId == me()));
+      allow delete: if (isStudent() && resource.data.uid == me()) || isAdmin();
+      allow update: if isAdmin();
+    }
+
+    // --- Don Apply ------------------------------------------------------------
+    match /applications/{applicationId} {
+      allow read: if isSchool();
+      allow create: if isDemoAdmin() || (isStudent()
+        && request.resource.data.applicantId == me()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.votes.size() == 0);
+      allow update: if isAdmin()
+        // Ung vien sua loi nhan / rut don / he thong huy don cua chinh minh.
+        || (isStudent() && resource.data.applicantId == me()
+          && onlyChanges(['status', 'decidedAt', 'message']))
+        // Thanh vien vote, Leader mo vote / quyet dinh / reject khi du nguoi.
+        || (isStudent() && me() in room(resource.data.roomId).memberIds)
+        // BR-26: ung vien da vao nhom khac thi bat ky ai cung duoc chuyen don sang cancelled.
+        || (isStudent()
+          && request.resource.data.status == 'cancelled'
+          && onlyChanges(['status', 'decidedAt'])
+          && exists(/databases/$(database)/documents/memberships/$(resource.data.spaceId + '_' + resource.data.applicantId)));
+      allow delete: if false;
+    }
+
+    // --- Yeu cau chuyen nhom (BR-36) -----------------------------------------
+    match /transfer_requests/{requestId} {
+      allow read: if isAdmin() || (isStudent() && resource.data.studentId == me());
+      allow create: if isStudent()
+        && request.resource.data.studentId == me()
+        && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Tom tat su co cho web giang vien ------------------------------------
+    match /crash_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSchool() && request.resource.data.uid == me();
+      allow update, delete: if false;
+    }
+  }
+}

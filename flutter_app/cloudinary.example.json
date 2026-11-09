@@ -1,0 +1,4 @@
+{
+  "CLOUDINARY_CLOUD_NAME": "ten-cloud-cua-ban",
+  "CLOUDINARY_UPLOAD_PRESET": "ten-unsigned-preset"
+}

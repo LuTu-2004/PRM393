@@ -1,0 +1,19 @@
+# Tags: error
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Loi va khoi phuc (BR-22): don thu 4 bi chan, rut mot don thi gui lai duoc.
+# Bat dau: chua co nhom, da co don dang cho vao 05, 06, 08.
+tap "Nhận Apply"
+wait stable 2000
+tap "FA26EXE101-09"
+wait stable 2000
+tap "Gửi đơn Apply"
+wait stable 1000
+tap "Gửi đơn"
+wait stable 3000
+assert exists "Bạn chỉ được có tối đa 3 đơn Apply đang chờ"
+# TODO: them buoc rut don 05 o tab Don roi gui lai, sau do kiem tra "Đã gửi đơn Apply"

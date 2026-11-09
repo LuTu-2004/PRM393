@@ -1,0 +1,19 @@
+# Tags: flow2
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Luong 2: Apply vao Group. Bat dau: chua co nhom, khong co don dang cho.
+tap "Nhận Apply"
+wait stable 2000
+tap "FA26EXE101-08"
+wait stable 2000
+assert exists "Group – chỉ Apply"
+tap "Gửi đơn Apply"
+wait stable 1000
+tap "Gửi đơn"
+wait stable 3000
+assert exists "Đã gửi đơn Apply. Leader và nhóm sẽ xem xét."
+assert exists "Rút đơn"
