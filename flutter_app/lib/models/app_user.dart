@@ -158,6 +158,16 @@ class AppUser {
   };
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) {
+    final rawSkills = map['skills'];
+    final SkillScores parsedSkills;
+    if (rawSkills is Map<String, dynamic>) {
+      parsedSkills = SkillScores.fromMap(rawSkills);
+    } else if (rawSkills is Map) {
+      parsedSkills = SkillScores.fromMap(Map<String, dynamic>.from(rawSkills));
+    } else {
+      parsedSkills = const SkillScores();
+    }
+
     return AppUser(
       uid: uid,
       email: map['email'] as String? ?? '',
@@ -171,9 +181,9 @@ class AppUser {
       major: map['major'] as String?,
       cohort: map['cohort'] as String?,
       courseCode: map['courseCode'] as String?,
-      skills: SkillScores.fromMap(map['skills'] as Map<String, dynamic>?),
+      skills: parsedSkills,
       commitmentAccepted: map['commitmentAccepted'] as bool? ?? false,
-      policyAcceptedAt: readDate(map['policyAcceptedAt']),
+      policyAcceptedAt: readDate(map['policyAcceptedAt'] ?? map['acceptedPolicyAt']),
       createdAt: readDate(map['createdAt']),
     );
   }

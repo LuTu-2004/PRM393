@@ -28,7 +28,7 @@ String friendlyError(Object error) {
     }
     return 'Lỗi máy chủ (${error.code}). Hãy thử lại.';
   }
-  return 'Đã có lỗi xảy ra. Hãy thử lại.';
+  return 'Lỗi: $error';
 }
 
 /// Chay mot thao tac, bat loi, ghi loi khong mong doi len Crashlytics.

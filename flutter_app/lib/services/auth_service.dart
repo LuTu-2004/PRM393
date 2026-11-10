@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:exe_matching/config/app_config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -33,11 +35,21 @@ class AuthService {
       ..addScope('email')
       ..setCustomParameters({'prompt': 'select_account'});
 
+    if (kIsWeb) {
+      // Tren Web (dac biet la Chrome / Coc Coc localhost), popup bi Cross-Origin-Opener-Policy
+      // chan window.closed va giao tiep postMessage.
+      // signInWithRedirect chuyen huong truc tiep, khong bao gio bi popup blocker chan.
+      try {
+        await _auth.signInWithRedirect(provider);
+      } on FirebaseAuthException catch (e) {
+        throw AuthException('Đăng nhập thất bại (${e.code}).');
+      }
+      return Completer<User>().future;
+    }
+
     final UserCredential credential;
     try {
-      credential = kIsWeb
-          ? await _auth.signInWithPopup(provider)
-          : await _auth.signInWithProvider(provider);
+      credential = await _auth.signInWithProvider(provider);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'web-context-canceled' ||
           e.code == 'canceled' ||
