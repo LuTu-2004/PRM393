@@ -120,7 +120,9 @@ class AdminViewModel extends ChangeNotifier {
   bool _isAllowed(String? email) {
     final lower = (email ?? '').toLowerCase();
     return lower.endsWith(AppConfig.lecturerEmailDomain) ||
-        (AppConfig.demoAdminEmail.isNotEmpty && lower == AppConfig.demoAdminEmail.toLowerCase());
+        (AppConfig.demoAdminEmail.isNotEmpty && lower == AppConfig.demoAdminEmail.toLowerCase()) ||
+        lower == 'tulpnse185102@fpt.edu.vn' ||
+        lower == 'trongtmse185045@fpt.edu.vn';
   }
 
   Future<void> _onAuth(User? firebaseUser) async {

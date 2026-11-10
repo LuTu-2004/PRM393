@@ -35,21 +35,13 @@ class AuthService {
       ..addScope('email')
       ..setCustomParameters({'prompt': 'select_account'});
 
-    if (kIsWeb) {
-      // Tren Web (dac biet la Chrome / Coc Coc localhost), popup bi Cross-Origin-Opener-Policy
-      // chan window.closed va giao tiep postMessage.
-      // signInWithRedirect chuyen huong truc tiep, khong bao gio bi popup blocker chan.
-      try {
-        await _auth.signInWithRedirect(provider);
-      } on FirebaseAuthException catch (e) {
-        throw AuthException('Đăng nhập thất bại (${e.code}).');
-      }
-      return Completer<User>().future;
-    }
-
     final UserCredential credential;
     try {
-      credential = await _auth.signInWithProvider(provider);
+      if (kIsWeb) {
+        credential = await _auth.signInWithPopup(provider);
+      } else {
+        credential = await _auth.signInWithProvider(provider);
+      }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'web-context-canceled' ||
           e.code == 'canceled' ||

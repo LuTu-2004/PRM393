@@ -32,8 +32,11 @@ class AppConfig {
   static const String cloudinaryUploadPreset = String.fromEnvironment('CLOUDINARY_UPLOAD_PRESET');
 
   /// Tai khoan sinh vien duoc vao web giang vien de demo khi nhom khong co email @fe.edu.vn.
-  /// Truyen khi chay: --dart-define=DEMO_ADMIN_EMAIL=... (rules cung phai cho phep).
-  static const String demoAdminEmail = String.fromEnvironment('DEMO_ADMIN_EMAIL');
+  /// Truyen khi chay: --dart-define=DEMO_ADMIN_EMAIL=... (mac dinh la email cua ban de tien demo).
+  static const String demoAdminEmail = String.fromEnvironment(
+    'DEMO_ADMIN_EMAIL',
+    defaultValue: 'tulpnse185102@fpt.edu.vn',
+  );
 
   /// Thoi han cuoc bau Leader (BR-19).
   static const Duration leaderElectionDuration = Duration(hours: 24);
