@@ -149,7 +149,8 @@ class AdminViewModel extends ChangeNotifier {
       );
       _status = AdminAuthStatus.ready;
       _subscribeGlobal();
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('AdminViewModel _onAuth error: $e\n$st');
       _error = friendlyError(e);
       _status = AdminAuthStatus.signedOut;
     }
@@ -162,7 +163,8 @@ class AdminViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       await _auth.signInWithGoogle();
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('AdminViewModel signIn error: $e\n$st');
       _error = friendlyError(e);
     }
     _signingIn = false;

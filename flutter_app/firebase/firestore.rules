@@ -39,7 +39,10 @@ service cloud.firestore {
       return isLecturer() || isDemoAdmin();
     }
     function isDemoAdmin() {
-      return signedIn() && email() == 'trongtmse185045@fpt.edu.vn';
+      return signedIn() && (
+        email() == 'trongtmse185045@fpt.edu.vn' ||
+        email() == 'tulpnse185102@fpt.edu.vn'
+      );
     }
     function room(roomId) {
       return get(/databases/$(database)/documents/rooms/$(roomId)).data;
