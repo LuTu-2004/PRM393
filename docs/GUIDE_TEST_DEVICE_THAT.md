@@ -159,3 +159,4 @@ flutter run
 1. **Firestore Rules:** Đảm bảo toàn bộ nội dung file [`flutter_app/firebase/firestore.rules`](file:///e:/PRM/Test%201/PRM393/flutter_app/firebase/firestore.rules) đã được **Publish** trên Firebase Console để tránh bị lỗi `PERMISSION_DENIED`.
 2. **Bảo mật:** Không bao giờ commit file `service-account.json` (chứa private key của Firebase) hoặc file `cloudinary.json` lên Git.
 3. **Mạng Internet:** Giữ điện thoại Android và máy tính cùng kết nối mạng Wifi ổn định (hoặc phát 4G từ điện thoại cho máy tính) để thông báo FCM và Firestore đồng bộ tức thì.
+
