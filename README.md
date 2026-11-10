@@ -40,6 +40,11 @@ set GOOGLE_APPLICATION_CREDENTIALS=C:\duong\dan\service-account.json
 python server/send_fcm.py --uid <uid> --title "Nhắc hạn" --body "Còn 3 ngày" --room-id FA26EXE101-01
 ```
 
+Để tự gửi khi có đơn Apply mới, mở vote, có kết quả vote hoặc kết quả chuyển nhóm, chạy một bản duy nhất trong lúc demo. Thay đổi xảy ra khi script đang tắt sẽ không được gửi.
+```
+python server/notify_events.py
+```
+
 ## Kiểm tra
 ```
 cd flutter_app

@@ -41,6 +41,28 @@ def send(token, title, body, room_id):
     return messaging.send(message)
 
 
+def send_to_user(db, uid, title, body, room_id):
+    """Gui toi moi thiet bi cua mot nguoi. Tra ve so lan gui loi."""
+    tokens = tokens_of_user(db, uid)
+    if not tokens:
+        print("Chua co FCM token:", uid)
+        return 0
+
+    failed = 0
+    for token in tokens:
+        try:
+            print("Da gui:", send(token, title, body, room_id))
+        except messaging.UnregisteredError:
+            # Token het hieu luc (go app...): xoa de lan sau khong gui nua.
+            failed += 1
+            print("Token het hieu luc:", token[:16] + "...")
+            db.collection("users").document(uid).collection("fcm_tokens").document(token).delete()
+        except exceptions.FirebaseError as error:
+            failed += 1
+            print("Loi gui:", error)
+    return failed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Gui thong bao FCM")
     target = parser.add_mutually_exclusive_group(required=True)
@@ -53,27 +75,15 @@ def main():
 
     firebase_admin.initialize_app()
     db = firestore.client()
-    tokens = [args.token] if args.token else tokens_of_user(db, args.uid)
-    if not tokens:
-        sys.exit("Nguoi dung nay chua co FCM token. Hay mo app va dang nhap truoc.")
+    if args.uid:
+        if not tokens_of_user(db, args.uid):
+            sys.exit("Nguoi dung nay chua co FCM token. Hay mo app va dang nhap truoc.")
+        sys.exit(1 if send_to_user(db, args.uid, args.title, args.body, args.room_id) else 0)
 
-    failed = 0
-    for token in tokens:
-        try:
-            print("Da gui:", send(token, args.title, args.body, args.room_id))
-        except messaging.UnregisteredError:
-            # Token het hieu luc (go app...): xoa de lan sau khong gui nua.
-            failed += 1
-            print("Token het hieu luc:", token[:16] + "...")
-            if args.uid:
-                db.collection("users").document(args.uid).collection("fcm_tokens").document(
-                    token
-                ).delete()
-        except exceptions.FirebaseError as error:
-            failed += 1
-            print("Loi gui:", error)
-
-    sys.exit(1 if failed else 0)
+    try:
+        print("Da gui:", send(args.token, args.title, args.body, args.room_id))
+    except exceptions.FirebaseError as error:
+        sys.exit(f"Loi gui: {error}")
 
 
 if __name__ == "__main__":
