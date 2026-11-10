@@ -152,6 +152,35 @@ void main() {
       expect(result.issues.single.row, 5, reason: 'so dong khop voi file Excel');
     });
 
+    test('doc file .xls dang XML SpreadsheetML 2003 tu FAP thanh cong', () {
+      const xmlXls = '''<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Sheet1">
+  <Table>
+   <Row>
+    <Cell><Data ss:Type="String">Class</Data></Cell>
+    <Cell><Data ss:Type="String">RollNumber</Data></Cell>
+    <Cell><Data ss:Type="String">Email</Data></Cell>
+    <Cell><Data ss:Type="String">FullName</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">SE1919</Data></Cell>
+    <Cell><Data ss:Type="String">SE161484</Data></Cell>
+    <Cell><Data ss:Type="String">HoangVHSE161484@fpt.edu.vn</Data></Cell>
+    <Cell><Data ss:Type="String">Vũ Huy Hoàng</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>''';
+      final result = RosterParser.parse(_utf8(xmlXls), 'SE1919_FAP.xls');
+      expect(result.entries.length, 1);
+      expect(result.entries.first.studentCode, 'SE161484');
+      expect(result.entries.first.fullName, 'Vũ Huy Hoàng');
+      expect(result.entries.first.email, 'hoangvhse161484@fpt.edu.vn');
+    });
+
     test('file hong va .xls cu bao loi ro rang, duoi khac bi tu choi', () {
       expect(
         () => RosterParser.parse(_utf8('khong phai zip'), 'list.xlsx'),
