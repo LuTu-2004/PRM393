@@ -1,0 +1,14 @@
+# Tags: auth
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Dang xuat. Bat dau: da dang nhap.
+tap "Hồ sơ"
+wait stable 2000
+# TODO: them lenh cuon xuong theo cu phap trong mobai://reference/testing
+tap "Đăng xuất"
+wait stable 3000
+assert exists "Đăng nhập bằng Google"

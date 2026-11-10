@@ -1,137 +1,90 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:exe_matching/core/config/app_config.dart';
+import 'package:flutter/widgets.dart';
 
-/// Service ghi nhan su kien Analytics theo tieu chi Lab 3
-/// Tham khao docs/02_analytics_plan.md
-/// Dam bao tren 7 su kien he thong phu hop voi yeu cau Lab 3
+/// Ghi su kien Firebase Analytics. Ten su kien: chu thuong, so, gach duoi, toi da 40 ky tu.
+/// Khong dua email hay ten nguoi dung vao tham so.
 class AnalyticsService {
-  /// 1. Ghi log su kien Tao phong moi (BR-09, BR-10)
-  static Future<void> logRoomCreated({
-    required String subjectCode,
-    required bool isPublic,
-  }) async {
-    if (AppConfig.USE_MOCK_DATA) return;
+  final FirebaseAnalytics? _analytics;
+
+  AnalyticsService({this._analytics});
+
+  factory AnalyticsService.firebase() => AnalyticsService(analytics: FirebaseAnalytics.instance);
+
+  /// Dung cho test: khong gui gi.
+  factory AnalyticsService.disabled() => AnalyticsService();
+
+  /// Observer gan vao MaterialApp de tu dong ghi `screen_view`.
+  NavigatorObserver? get observer =>
+      _analytics == null ? null : FirebaseAnalyticsObserver(analytics: _analytics);
+
+  Future<void> _log(String name, [Map<String, Object>? params]) async {
+    final analytics = _analytics;
+    if (analytics == null) return;
     try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'room_created',
-        parameters: {
-          'subject_code': subjectCode,
-          'is_public': isPublic ? 1 : 0,
-        },
-      );
-    } catch (_) {}
+      await analytics.logEvent(name: name, parameters: params);
+    } catch (e) {
+      debugPrint('Analytics $name error: $e');
+    }
   }
 
-  /// 2. Ghi log su kien Dang nhap (BR-02)
-  static Future<void> logSignIn({
-    required String role,
-    String? major,
-    String? cohort,
-  }) async {
-    if (AppConfig.USE_MOCK_DATA) return;
+  Future<void> setUser(String? uid, {String? role, String? course}) async {
+    final analytics = _analytics;
+    if (analytics == null) return;
     try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'user_signed_in',
-        parameters: {
-          'role': role,
-          if (major != null) 'major': major,
-          if (cohort != null) 'cohort': cohort,
-        },
-      );
-    } catch (_) {}
+      await analytics.setUserId(id: uid);
+      if (role != null) await analytics.setUserProperty(name: 'user_role', value: role);
+      if (course != null) await analytics.setUserProperty(name: 'course_code', value: course);
+    } catch (e) {
+      debugPrint('Analytics setUser error: $e');
+    }
   }
 
-  /// 3. Ghi log su kien Dang xuat
-  static Future<void> logSignOut() async {
-    if (AppConfig.USE_MOCK_DATA) return;
+  Future<void> logLogin() async {
+    final analytics = _analytics;
+    if (analytics == null) return;
     try {
-      await FirebaseAnalytics.instance.logEvent(name: 'user_signed_out');
-    } catch (_) {}
+      await analytics.logLogin(loginMethod: 'google');
+    } catch (e) {
+      debugPrint('Analytics login error: $e');
+    }
   }
 
-  /// 4. Ghi log su kien xem chi tiet phong
-  static Future<void> logViewRoom({
-    required String roomId,
-    required String subjectCode,
-  }) async {
-    if (AppConfig.USE_MOCK_DATA) return;
+  Future<void> logLogout() => _log('logout');
+
+  Future<void> logScreen(String name) async {
+    final analytics = _analytics;
+    if (analytics == null) return;
     try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'room_viewed',
-        parameters: {
-          'room_id': roomId,
-          'subject_code': subjectCode,
-        },
-      );
-    } catch (_) {}
+      await analytics.logScreenView(screenName: name);
+    } catch (e) {
+      debugPrint('Analytics screen_view error: $e');
+    }
   }
 
-  /// 5. Ghi log su kien gui yeu cau vao phong (BR-16)
-  static Future<void> logJoinRequestSent({
-    required String roomId,
-  }) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'join_request_sent',
-        parameters: {'room_id': roomId},
-      );
-    } catch (_) {}
-  }
+  Future<void> logViewApplication(String roomId) => _log('view_application', {'item_id': roomId});
+  Future<void> logUpdateApplication(String roomId) =>
+      _log('update_application', {'item_id': roomId});
+  Future<void> logExportPdf(int itemCount) => _log('export_pdf', {'item_count': itemCount});
 
-  /// 6. Ghi log khi hien thi canh bao BR-19 (chuyen nganh > 50%)
-  static Future<void> logMajorWarningShown({
-    required String roomId,
-    required double ratio,
-  }) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'major_warning_shown',
-        parameters: {
-          'room_id': roomId,
-          'ratio': (ratio * 100).toInt(),
-        },
-      );
-    } catch (_) {}
-  }
-
-  /// 7. Ghi log khi Leader kich hoat phien Bo Phieu Kin (BR-21)
-  static Future<void> logVoteSessionStarted({required String roomId}) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'vote_session_started',
-        parameters: {'room_id': roomId},
-      );
-    } catch (_) {}
-  }
-
-  /// 8. Ghi log khi thanh vien nop phieu bau (BR-23)
-  static Future<void> logVoteCast({required String roomId}) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'vote_cast',
-        parameters: {'room_id': roomId},
-      );
-    } catch (_) {}
-  }
-
-  /// 9. Ghi log khi xuat bao cao len Cloud Storage
-  static Future<void> logReportExported() async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseAnalytics.instance.logEvent(name: 'report_exported');
-    } catch (_) {}
-  }
-
-  /// Thiet lap User ID sau khi dang nhap — khong dung email hay ten
-  /// Lab 3 yeu cau: setUserId sau dang nhap, khong de lo thong tin ca nhan
-  static Future<void> setCurrentUser(String uid) async {
-    if (AppConfig.USE_MOCK_DATA) return;
-    try {
-      await FirebaseAnalytics.instance.setUserId(id: uid);
-    } catch (_) {}
-  }
+  Future<void> logProfileSaved(String course) => _log('complete_profile', {'course_code': course});
+  Future<void> logViewRoom(String roomId, String status) =>
+      _log('view_room', {'item_id': roomId, 'room_status': status});
+  Future<void> logJoinRoom(String roomId) => _log('join_room', {'item_id': roomId});
+  Future<void> logLeaveRoom(String roomId) => _log('leave_room', {'item_id': roomId});
+  Future<void> logCreateApplication(String roomId) =>
+      _log('create_application', {'item_id': roomId});
+  Future<void> logWithdrawApplication(String roomId) =>
+      _log('delete_application', {'item_id': roomId});
+  Future<void> logVoteApplication(String roomId, bool accept) =>
+      _log('vote_application', {'item_id': roomId, 'accept': accept ? 1 : 0});
+  Future<void> logDecideApplication(String roomId, bool accept) =>
+      _log('decide_application', {'item_id': roomId, 'accept': accept ? 1 : 0});
+  Future<void> logCloseRecruitment(String roomId) => _log('close_recruitment', {'item_id': roomId});
+  Future<void> logTransferLeader(String roomId) => _log('transfer_leader', {'item_id': roomId});
+  Future<void> logStartElection(String roomId) =>
+      _log('start_leader_election', {'item_id': roomId});
+  Future<void> logVoteElection(String roomId, bool agree) =>
+      _log('vote_leader_election', {'item_id': roomId, 'agree': agree ? 1 : 0});
+  Future<void> logTransferRequest(String fromRoom, String toRoom) =>
+      _log('create_transfer_request', {'from_room': fromRoom, 'to_room': toRoom});
 }

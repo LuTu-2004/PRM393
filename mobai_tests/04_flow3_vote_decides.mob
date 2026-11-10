@@ -1,0 +1,18 @@
+# Tags: flow3
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Luong 3: vote quyet dinh. Bat dau: la Leader Room 01, mot minh trong nhom, co 3 don demo dang cho.
+# Nhom mot nguoi nen phieu cua Leader du hon 50% va don duoc nhan ngay.
+tap "Nhóm của tôi"
+wait stable 2000
+assert exists "Nguyễn Hải Đăng"
+tap "Mở vote"
+wait stable 2000
+tap "Vote nhận"
+wait stable 3000
+assert exists "Đủ phiếu: đã nhận Nguyễn Hải Đăng vào nhóm."
+assert exists "2/5 thành viên"

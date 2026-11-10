@@ -1,0 +1,15 @@
+# Tags: pdf
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Xuat PDF. Bat dau: da chay app voi cloudinary.json, co mang.
+tap "Hồ sơ"
+wait stable 2000
+# TODO: them lenh cuon xuong theo cu phap trong mobai://reference/testing
+tap "Xuất báo cáo PDF"
+wait stable 15000
+assert exists "Đã xuất và upload báo cáo."
+assert exists "bao_cao_"

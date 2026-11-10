@@ -1,0 +1,21 @@
+# Tags: nav
+# On-Fail: abort
+# BAN NHAP: chua chay tren MobAI. Xem trang thai bat dau trong docs/test-report.md.
+
+open com.fpt.exe.exe_matching
+wait stable 3000
+
+# Moi tab hien dung noi dung. Bat dau: da dang nhap, ho so da hoan thanh.
+assert exists "Hạn đăng ký"
+tap "Nhóm của tôi"
+wait stable 2000
+assert exists "Thành viên"
+tap "Đơn"
+wait stable 2000
+assert exists "Đơn của tôi"
+tap "Hồ sơ"
+wait stable 2000
+assert exists "MSSV"
+tap "Room"
+wait stable 2000
+assert exists "Hạn đăng ký"
