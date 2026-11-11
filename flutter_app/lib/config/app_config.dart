@@ -51,6 +51,8 @@ class Collections {
   static const String rooms = 'rooms';
   static const String memberships = 'memberships';
   static const String enrollments = 'enrollments'; // danh sach FAP theo Space (BR-01)
+  // Email duoc phep dang nhap, ma tai lieu = email viet thuong. Ghi khi import FAP (BR-01).
+  static const String allowedEmails = 'allowed_emails';
   static const String applications = 'applications';
   static const String elections = 'elections'; // subcollection cua rooms
   static const String transferRequests = 'transfer_requests';

@@ -3,7 +3,8 @@ rules_version = '2';
 // Firestore Security Rules - EXE Team Matching (PRM393 Lab 3)
 //
 // Nguyen tac:
-// - Chi tai khoan email truong da xac minh moi doc/ghi duoc (BR-01, BR-02).
+// - Giang vien: email @fe.edu.vn. Sinh vien: email (ke ca email ca nhan) phai co trong
+//   danh sach FAP moderator da import, luu o allowed_emails/{email} (BR-01).
 // - Ho so ca nhan chi chu so huu doc/ghi; MSSV, nganh, khoa, vai tro khong sua duoc (BR-04).
 // - Room chi do nguoi trong nhom (truoc hoac sau thay doi) sua: vao thang, roi nhom,
 //   vote nhan nguoi, chuyen quyen.
@@ -21,14 +22,20 @@ service cloud.firestore {
     function email() {
       return request.auth.token.email.lower();
     }
+    function allowedEmail() {
+      return /databases/$(database)/documents/allowed_emails/$(email());
+    }
     function isStudent() {
-      return signedIn() && email().matches('.*@fpt[.]edu[.]vn$');
+      return signedIn() && !isLecturer()
+        && exists(allowedEmail())
+        && get(allowedEmail()).data.spaceIds.size() > 0;
     }
     function isLecturer() {
       return signedIn() && email().matches('.*@fe[.]edu[.]vn$');
     }
     function isSchool() {
-      return isStudent() || isLecturer();
+      // isDemoAdmin: moderator demo phai vao web import danh sach truoc khi co ten trong do.
+      return isLecturer() || isDemoAdmin() || isStudent();
     }
     function me() {
       return request.auth.uid;
@@ -41,7 +48,9 @@ service cloud.firestore {
     function isDemoAdmin() {
       return signedIn() && (
         email() == 'trongtmse185045@fpt.edu.vn' ||
-        email() == 'tulpnse185102@fpt.edu.vn'
+        email() == 'tulpnse185102@fpt.edu.vn' ||
+        email() == 'tuanptse184480@fpt.edu.vn' ||
+        email() == 'anhhminhh545@gmail.com'
       );
     }
     function room(roomId) {
@@ -86,6 +95,12 @@ service cloud.firestore {
     }
 
     // --- Danh sach FAP (BR-01) -------------------------------------------------
+    // Moi nguoi chi doc duoc ban ghi cua chinh email minh de app kiem tra luc dang nhap.
+    match /allowed_emails/{emailId} {
+      allow get: if signedIn() && emailId == email();
+      allow list, write: if isAdmin();
+    }
+
     match /enrollments/{enrollmentId} {
       // Sinh vien chi doc tung ban ghi theo ma de kiem tra minh co ten, khong liet ke ca danh sach.
       allow get: if isSchool();

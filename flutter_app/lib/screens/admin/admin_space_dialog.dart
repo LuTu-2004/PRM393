@@ -47,13 +47,17 @@ class _SpaceFormDialogState extends State<_SpaceFormDialog> {
     text: '${widget.space?.applyLimit ?? AppConfig.defaultApplyLimit}',
   );
   late final _students = TextEditingController(
-    text: '${widget.space?.studentCount ?? AppConfig.defaultStudentCount}',
+    text:
+        '${_studentsFromRoster ? widget.space!.rosterCount : (widget.space?.studentCount ?? AppConfig.defaultStudentCount)}',
   );
   late DateTime _deadline =
       widget.space?.registrationDeadline ?? DateTime.now().add(AppConfig.defaultRegistrationPeriod);
   bool _submitting = false;
 
   bool get _isEdit => widget.space != null;
+
+  /// Mon da import danh sach FAP thi so sinh vien lay tu danh sach, khong sua tay.
+  bool get _studentsFromRoster => (widget.space?.rosterCount ?? 0) > 0;
 
   int? get _percent {
     final value = double.tryParse(_factor.text.replaceAll(',', '.'));
@@ -132,12 +136,14 @@ class _SpaceFormDialogState extends State<_SpaceFormDialog> {
     if (result.ok) Navigator.pop(context);
   }
 
-  Widget _number(TextEditingController c, String label, {String? helper}) => TextField(
-    controller: c,
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    onChanged: (_) => setState(() {}),
-    decoration: InputDecoration(labelText: label, helperText: helper),
-  );
+  Widget _number(TextEditingController c, String label, {String? helper, bool enabled = true}) =>
+      TextField(
+        controller: c,
+        enabled: enabled,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(labelText: label, helperText: helper),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +170,14 @@ class _SpaceFormDialogState extends State<_SpaceFormDialog> {
                 ),
                 const SizedBox(height: AppSpacing.md),
               ],
-              _number(_students, 'Tổng số sinh viên'),
+              _number(
+                _students,
+                'Tổng số sinh viên',
+                enabled: !_studentsFromRoster,
+                helper: _studentsFromRoster
+                    ? 'Lấy từ danh sách FAP, muốn đổi hãy import lại'
+                    : 'Sẽ tự cập nhật khi import danh sách FAP',
+              ),
               const SizedBox(height: AppSpacing.md),
               _number(_size, 'Sĩ số tối đa mỗi nhóm'),
               const SizedBox(height: AppSpacing.md),

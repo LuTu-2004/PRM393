@@ -20,18 +20,41 @@ class UserService {
   Stream<AppUser?> watchUser(String uid) =>
       _doc(uid).snapshots().map((s) => s.exists ? AppUser.fromMap(s.id, s.data()!) : null);
 
-  /// Tao ho so lan dau dang nhap. MSSV, nganh, khoa lay tu email (BR-04).
+  /// BR-01: email co trong danh sach FAP ma moderator da import (it nhat mot mon) hay khong.
+  /// Tra ve MSSV trong danh sach, hoac null neu khong duoc phep dang nhap.
+  Future<String?> rosterStudentCode(String email) async {
+    final snap = await _db
+        .collection(Collections.allowedEmails)
+        .doc(email.trim().toLowerCase())
+        .get();
+    final data = snap.data();
+    if (data == null) return null;
+    final spaceIds = data['spaceIds'] as List<dynamic>? ?? const [];
+    if (spaceIds.isEmpty) return null;
+    return data['studentCode'] as String? ?? '';
+  }
+
+  /// Tao ho so lan dau dang nhap. MSSV lay tu danh sach FAP neu co, khong thi tu email;
+  /// nganh, khoa lay tu MSSV (BR-04).
   Future<AppUser> ensureUser({
     required String uid,
     required String email,
     String? displayName,
     String? photoUrl,
+    String? studentCode,
   }) async {
     final snap = await _doc(uid).get();
     if (snap.exists) return AppUser.fromMap(uid, snap.data()!);
 
     final isLecturer = AuthService.isLecturerEmail(email);
-    final code = isLecturer ? null : AppUser.studentCodeFromEmail(email);
+    final code = isLecturer
+        ? null
+        : (studentCode?.isNotEmpty ?? false)
+        ? studentCode
+        // Email ca nhan (gmail...) khong chua MSSV, khong tach de tranh ra ma sai.
+        : (email.toLowerCase().endsWith(AppConfig.studentEmailDomain)
+              ? AppUser.studentCodeFromEmail(email)
+              : null);
     final user = AppUser(
       uid: uid,
       email: email.toLowerCase(),

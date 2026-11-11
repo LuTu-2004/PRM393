@@ -122,6 +122,8 @@ class AdminViewModel extends ChangeNotifier {
     return lower.endsWith(AppConfig.lecturerEmailDomain) ||
         (AppConfig.demoAdminEmail.isNotEmpty && lower == AppConfig.demoAdminEmail.toLowerCase()) ||
         lower == 'tulpnse185102@fpt.edu.vn' ||
+        lower == 'tuanptse184480@fpt.edu.vn' ||
+        lower == 'anhhminhh545@gmail.com' ||
         lower == 'trongtmse185045@fpt.edu.vn';
   }
 
@@ -268,14 +270,14 @@ class AdminViewModel extends ChangeNotifier {
   Future<ActionResult> applyRoster() async {
     final diff = rosterDiff;
     if (diff == null) return const ActionResult.failure('Chưa chọn file.');
-    var addedRooms = 0;
+    var change = const RoomChange();
     final result = await _run('import_roster', () async {
-      addedRooms = await _admin.importRoster(_requireSpace(), diff);
+      change = await _admin.importRoster(_requireSpace(), diff);
       _rosterFile = null;
-    }, 'Đã lưu danh sách ${diff.total} sinh viên.');
-    return result.ok && addedRooms > 0
+    }, 'Đã lưu danh sách, môn có ${diff.total} sinh viên.');
+    return result.ok && change.summary.isNotEmpty
         ? ActionResult.success(
-            'Đã lưu danh sách ${diff.total} sinh viên và tạo thêm $addedRooms Room.',
+            'Đã lưu danh sách, môn có ${diff.total} sinh viên; ${change.summary}.',
           )
         : result;
   }
@@ -308,9 +310,9 @@ class AdminViewModel extends ChangeNotifier {
     required int studentCount,
     required DateTime deadline,
   }) async {
-    var added = 0;
+    var change = const RoomChange();
     final result = await _run('update_config', () async {
-      added = await _admin.updateSpaceConfig(
+      change = await _admin.updateSpaceConfig(
         space: _requireSpace(),
         maxGroupSize: maxGroupSize,
         reservePercent: reservePercent,
@@ -319,8 +321,8 @@ class AdminViewModel extends ChangeNotifier {
         registrationDeadline: deadline,
       );
     }, 'Đã lưu cấu hình.');
-    return result.ok && added > 0
-        ? ActionResult.success('Đã lưu cấu hình và tạo thêm $added Room.')
+    return result.ok && change.summary.isNotEmpty
+        ? ActionResult.success('Đã lưu cấu hình; ${change.summary}.')
         : result;
   }
 
@@ -342,11 +344,28 @@ class AdminViewModel extends ChangeNotifier {
     }, 'Đã phân phối ${plan.studentCount} sinh viên.');
   }
 
+  /// Khong con sinh vien le: chot ngay.
   Future<ActionResult> finalizeSpace() => _run(
     'finalize_space',
     () => _admin.finalizeSpace(_requireSpace()),
     'Đã chốt sổ. Sinh viên không thể tự vào hoặc rời nhóm nữa.',
   );
+
+  /// Con sinh vien le: lap ke hoach de giang vien xem trong hop thoai chot so, chua ghi gi.
+  Future<(DistributionPlan?, String?)> planForFinalize() async {
+    try {
+      return (await _admin.previewDistribution(_requireSpace(), strayStudents), null);
+    } catch (e) {
+      return (null, friendlyError(e));
+    }
+  }
+
+  /// Ap dung ke hoach vua xem roi chot so (BR-31, BR-33).
+  Future<ActionResult> distributeAndFinalize(DistributionPlan plan) =>
+      _run('distribute_and_finalize', () async {
+        await _admin.distributeAndFinalize(_requireSpace(), plan);
+        _plan = null;
+      }, 'Đã phân phối ${plan.studentCount} sinh viên và chốt sổ.');
 
   Future<ActionResult> moveStudent({
     required String studentUid,

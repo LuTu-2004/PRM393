@@ -69,6 +69,7 @@ class RosterParser {
     'taikhoan',
     'username',
   };
+  static const _classHeaders = {'class', 'classname', 'lop', 'tenlop', 'malop', 'lophoc'};
   static const _surnameHeaders = {'surname', 'lastname', 'familyname', 'ho'};
   static const _middleHeaders = {'middlename', 'tendem', 'dem'};
   static const _givenHeaders = {'givenname', 'firstname', 'ten'};
@@ -122,6 +123,7 @@ class RosterParser {
       final rawCode = columns.cell(row, columns.code).toUpperCase();
       final rawEmail = columns.cell(row, columns.email).toLowerCase();
       final rawMember = columns.cell(row, columns.member);
+      final rawClass = columns.cell(row, columns.className).toUpperCase();
       final code = rawCode.isNotEmpty
           ? rawCode
           : AppUser.studentCodeFromEmail(rawEmail.isNotEmpty ? rawEmail : rawMember);
@@ -148,6 +150,7 @@ class RosterParser {
           studentCode: code,
           fullName: name,
           email: rawEmail.contains('@') ? rawEmail : null,
+          className: rawClass.isEmpty ? null : rawClass,
         ),
       );
     }
@@ -253,7 +256,8 @@ class RosterParser {
   static List<List<String>> _readXls(Uint8List bytes) {
     try {
       final text = _decodeText(bytes);
-      if (text.contains('<Workbook') &&
+      // FAP ghi the co tien to namespace: <ss:Workbook ...>.
+      if (RegExp(r'<(\w+:)?Workbook\b').hasMatch(text) &&
           (text.contains('schemas-microsoft-com:office:spreadsheet') ||
               text.contains('progid="Excel.Sheet"'))) {
         return _readSpreadsheetMl(text);
@@ -277,8 +281,8 @@ class RosterParser {
       for (final rowEl in firstSheet.findAllElements('Row', namespaceUri: '*')) {
         final row = <String>[];
         for (final cellEl in rowEl.findElements('Cell', namespaceUri: '*')) {
-          final indexAttr = cellEl.getAttribute('ss:Index') ??
-              cellEl.getAttribute('Index', namespaceUri: '*');
+          final indexAttr =
+              cellEl.getAttribute('ss:Index') ?? cellEl.getAttribute('Index', namespaceUri: '*');
           if (indexAttr != null) {
             final targetIndex = int.tryParse(indexAttr);
             if (targetIndex != null) {
@@ -403,6 +407,7 @@ class _Columns {
   final int name;
   final int email;
   final int member;
+  final int className;
   final int surname;
   final int middle;
   final int given;
@@ -412,6 +417,7 @@ class _Columns {
     required this.name,
     required this.email,
     required this.member,
+    required this.className,
     required this.surname,
     required this.middle,
     required this.given,
@@ -425,6 +431,7 @@ class _Columns {
       name: find(RosterParser._nameHeaders),
       email: find(RosterParser._emailHeaders),
       member: find(RosterParser._memberHeaders),
+      className: find(RosterParser._classHeaders),
       surname: find(RosterParser._surnameHeaders),
       middle: find(RosterParser._middleHeaders),
       given: find(RosterParser._givenHeaders),

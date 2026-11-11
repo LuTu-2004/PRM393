@@ -1,5 +1,6 @@
 import 'package:exe_matching/domain/distribution_planner.dart';
 import 'package:exe_matching/domain/roster_diff.dart';
+import 'package:exe_matching/domain/room_rules.dart';
 import 'package:exe_matching/domain/roster_parser.dart';
 import 'package:exe_matching/models/room.dart';
 import 'package:exe_matching/models/transfer_request.dart';
@@ -88,19 +89,79 @@ class _Stat extends StatelessWidget {
 class OverviewPage extends StatelessWidget {
   const OverviewPage({super.key});
 
+  /// BR-30 - BR-33: con sinh vien le thi hien ke hoach phan phoi de xem, xac nhan la phan phoi
+  /// roi chot trong mot lan. Khong con ai le thi chi hoi xac nhan chot.
   Future<void> _finalize(BuildContext context, AdminViewModel vm) async {
-    final strays = vm.strayStudents.length;
-    final ok = await confirm(
-      context,
-      title: 'Chốt sổ ${vm.space!.courseCode}?',
-      message:
-          '${strays > 0 ? 'Còn $strays sinh viên chưa có nhóm. ' : ''}'
-          'Mọi thành viên sẽ bị khóa vào nhóm, đơn đang chờ chuyển thành Reject. '
-          'Không hoàn tác được trên web.',
-      confirmLabel: 'Chốt sổ',
-      destructive: true,
+    final course = vm.space!.courseCode;
+    final notJoined = vm.roster.isEmpty ? 0 : vm.rosterNotJoined.length;
+    final notJoinedWarning = notJoined > 0
+        ? 'Còn $notJoined sinh viên có tên trong danh sách FAP nhưng chưa đăng nhập, '
+              'sẽ không được xếp nhóm. '
+        : '';
+    const lockNote =
+        'Mọi thành viên sẽ bị khóa vào nhóm, đơn Apply đang chờ chuyển thành Reject. '
+        'Không hoàn tác được trên web.';
+
+    if (vm.strayStudents.isEmpty) {
+      final ok = await confirm(
+        context,
+        title: 'Chốt sổ $course?',
+        message: '$notJoinedWarning$lockNote',
+        confirmLabel: 'Chốt sổ',
+        destructive: true,
+      );
+      if (ok && context.mounted) await _act(context, vm.finalizeSpace);
+      return;
+    }
+
+    final (plan, error) = await vm.planForFinalize();
+    if (!context.mounted) return;
+    if (plan == null) {
+      showResult(context, ActionResult.failure(error ?? 'Không lập được kế hoạch.'));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Phân phối và chốt sổ $course?'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Còn ${plan.studentCount} sinh viên chưa có nhóm. Hệ thống sẽ xếp họ theo kế '
+                  'hoạch dưới đây (lấp nhóm chưa đủ trước, cân bằng kỹ năng và chuyên ngành), '
+                  'rồi chốt sổ.',
+                ),
+                if (notJoinedWarning.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: Text(notJoinedWarning, style: const TextStyle(color: AppColors.warning)),
+                  ),
+                const SizedBox(height: AppSpacing.md),
+                _PlanDetails(plan: plan),
+                const SizedBox(height: AppSpacing.md),
+                const Text(lockNote),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Hủy')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Phân phối và chốt sổ'),
+          ),
+        ],
+      ),
     );
-    if (ok && context.mounted) await _act(context, vm.finalizeSpace);
+    if ((ok ?? false) && context.mounted) {
+      await _act(context, () => vm.distributeAndFinalize(plan));
+    }
   }
 
   @override
@@ -171,11 +232,23 @@ class OverviewPage extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-              onPressed: vm.busy ? null : () => _finalize(context, vm),
+              onPressed: vm.busy || !expired ? null : () => _finalize(context, vm),
               icon: const Icon(Icons.verified_outlined),
-              label: const Text('Chốt sổ'),
+              label: Text(
+                vm.strayStudents.isEmpty
+                    ? 'Chốt sổ'
+                    : 'Phân phối ${vm.strayStudents.length} sinh viên lẻ và chốt sổ',
+              ),
             ),
           ),
+          if (!expired)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: Text(
+                'Chốt sổ mở sau hạn đăng ký (${date.format(space.registrationDeadline)}).',
+                style: text.bodySmall?.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
         ],
       ],
     );
@@ -335,14 +408,16 @@ class RosterPage extends StatelessWidget {
           const EmptyView(
             icon: Icons.upload_file_outlined,
             title: 'Chưa import danh sách',
-            message: 'Khi chưa có danh sách, mọi sinh viên có email trường đều chọn được môn này.',
+            message: 'Khi chưa có danh sách, sinh viên chưa đăng nhập được. Import file FAP của từng lớp.',
           ),
         for (final entry in vm.roster)
           Card(
             child: ListTile(
               dense: true,
               title: Text(entry.fullName),
-              subtitle: Text([entry.studentCode, entry.email].whereType<String>().join(' · ')),
+              subtitle: Text(
+                [entry.className, entry.studentCode, entry.email].whereType<String>().join(' · '),
+              ),
               trailing: Text(
                 notJoined.contains(entry.studentCode) ? 'Chưa vào môn' : 'Đã vào môn',
                 style: muted,
@@ -400,7 +475,16 @@ class _RosterPreviewCard extends StatelessWidget {
                 'Bỏ khỏi danh sách ${diff.removed.length} · Không đổi ${diff.unchanged}',
               ),
               Text(
-                'Số sinh viên của môn sẽ đổi thành ${diff.total}; Room còn thiếu sẽ được tạo thêm.',
+                diff.replacesWholeCourse
+                    ? 'File không có cột lớp nên thay toàn bộ danh sách của môn.'
+                    : 'Lớp trong file: ${(diff.classes.toList()..sort()).join(', ')}. '
+                          'Chỉ thay danh sách các lớp này; ${diff.kept.length} sinh viên '
+                          'của lớp khác giữ nguyên.',
+              ),
+              Text(
+                'Số sinh viên của môn sẽ là ${diff.total}'
+                '${vm.space == null ? '' : ' → ${RoomRules.roomCount(studentCount: diff.total, maxGroupSize: vm.space!.maxGroupSize, reservePercent: vm.space!.reservePercent)} Room'}'
+                '. Thiếu thì tạo thêm, thừa thì xóa Room trống.',
               ),
               for (final e in diff.removed)
                 Text(
@@ -446,6 +530,7 @@ class DistributionPage extends StatelessWidget {
     final vm = context.watch<AdminViewModel>();
     final strays = vm.strayStudents;
     final finalized = vm.space?.finalized ?? false;
+    final registrationOpen = vm.space?.isRegistrationOpen(DateTime.now()) ?? false;
     final text = Theme.of(context).textTheme;
 
     return _Page(
@@ -469,10 +554,21 @@ class DistributionPage extends StatelessWidget {
         if (vm.plan != null)
           _PlanCard(plan: vm.plan!)
         else if (!finalized && strays.isNotEmpty) ...[
+          if (registrationOpen)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Text(
+                'Chưa hết hạn đăng ký, sinh viên vẫn đang tự tìm nhóm. '
+                'Phân phối mở sau hạn đăng ký.',
+                style: text.bodyMedium?.copyWith(color: AppColors.warning),
+              ),
+            ),
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.icon(
-              onPressed: vm.busy ? null : () => _act(context, vm.previewDistribution),
+              onPressed: vm.busy || registrationOpen
+                  ? null
+                  : () => _act(context, vm.previewDistribution),
               icon: const Icon(Icons.auto_fix_high),
               label: Text('Lập kế hoạch cho ${strays.length} sinh viên'),
             ),
@@ -512,6 +608,41 @@ class DistributionPage extends StatelessWidget {
   }
 }
 
+/// Ai vao Room nao, Room tao moi, nhom van duoi nguong (BR-31, BR-32).
+class _PlanDetails extends StatelessWidget {
+  final DistributionPlan plan;
+  const _PlanDetails({required this.plan});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Kế hoạch: ${plan.studentCount} sinh viên vào ${plan.placements.length} nhóm',
+          style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        if (plan.newRoomIds.isNotEmpty) Text('Tạo thêm Room: ${plan.newRoomIds.join(', ')}'),
+        if (plan.belowThresholdRoomIds.isNotEmpty)
+          Text(
+            'Vẫn dưới ngưỡng sau phân phối: ${plan.belowThresholdRoomIds.join(', ')}',
+            style: const TextStyle(color: AppColors.warning),
+          ),
+        const SizedBox(height: AppSpacing.sm),
+        for (final p in plan.placements)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+            child: Text(
+              '${p.roomId}${p.isExistingGroup ? '' : ' (nhóm mới)'}: '
+              '${p.students.map((s) => s.uid == p.newLeaderId ? '${s.fullName} (Leader)' : s.fullName).join(', ')}',
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _PlanCard extends StatelessWidget {
   final DistributionPlan plan;
   const _PlanCard({required this.plan});
@@ -519,7 +650,6 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.read<AdminViewModel>();
-    final text = Theme.of(context).textTheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
       child: Card(
@@ -529,25 +659,7 @@ class _PlanCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Kế hoạch: ${plan.studentCount} sinh viên vào ${plan.placements.length} nhóm',
-                style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              if (plan.newRoomIds.isNotEmpty) Text('Tạo thêm Room: ${plan.newRoomIds.join(', ')}'),
-              if (plan.belowThresholdRoomIds.isNotEmpty)
-                Text(
-                  'Vẫn dưới ngưỡng sau phân phối: ${plan.belowThresholdRoomIds.join(', ')}',
-                  style: const TextStyle(color: AppColors.warning),
-                ),
-              const SizedBox(height: AppSpacing.sm),
-              for (final p in plan.placements)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-                  child: Text(
-                    '${p.roomId}${p.isExistingGroup ? '' : ' (nhóm mới)'}: '
-                    '${p.students.map((s) => s.uid == p.newLeaderId ? '${s.fullName} (Leader)' : s.fullName).join(', ')}',
-                  ),
-                ),
+              _PlanDetails(plan: plan),
               const SizedBox(height: AppSpacing.md),
               Wrap(
                 spacing: AppSpacing.sm,
