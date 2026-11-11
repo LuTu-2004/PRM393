@@ -69,6 +69,7 @@ class RosterParser {
     'taikhoan',
     'username',
   };
+  static const _classHeaders = {'class', 'classname', 'lop', 'tenlop', 'malop', 'lophoc'};
   static const _surnameHeaders = {'surname', 'lastname', 'familyname', 'ho'};
   static const _middleHeaders = {'middlename', 'tendem', 'dem'};
   static const _givenHeaders = {'givenname', 'firstname', 'ten'};
@@ -83,11 +84,9 @@ class RosterParser {
     } else if (lower.endsWith('.csv') || lower.endsWith('.txt')) {
       rows = _readCsv(_decodeText(bytes));
     } else if (lower.endsWith('.xls')) {
-      throw const RosterFormatException(
-        'Chưa đọc được định dạng .xls cũ. Hãy mở file trong Excel và lưu lại thành .xlsx hoặc CSV UTF-8.',
-      );
+      rows = _readXls(bytes);
     } else {
-      throw const RosterFormatException('Chỉ nhận file .csv hoặc .xlsx.');
+      throw const RosterFormatException('Chỉ nhận file .csv, .xlsx hoặc .xls.');
     }
     return _toEntries(rows, fileName);
   }
@@ -124,6 +123,7 @@ class RosterParser {
       final rawCode = columns.cell(row, columns.code).toUpperCase();
       final rawEmail = columns.cell(row, columns.email).toLowerCase();
       final rawMember = columns.cell(row, columns.member);
+      final rawClass = columns.cell(row, columns.className).toUpperCase();
       final code = rawCode.isNotEmpty
           ? rawCode
           : AppUser.studentCodeFromEmail(rawEmail.isNotEmpty ? rawEmail : rawMember);
@@ -150,6 +150,7 @@ class RosterParser {
           studentCode: code,
           fullName: name,
           email: rawEmail.contains('@') ? rawEmail : null,
+          className: rawClass.isEmpty ? null : rawClass,
         ),
       );
     }
@@ -249,7 +250,59 @@ class RosterParser {
     return rows;
   }
 
-  // --- Excel (.xlsx la file zip chua XML) ------------------------------------------
+  // --- Excel (.xlsx la file zip chua XML, .xls tu FAP la SpreadsheetML XML) ---
+
+  /// Doc file .xls. FAP xuat Excel o dang XML Spreadsheet 2003 (SpreadsheetML).
+  static List<List<String>> _readXls(Uint8List bytes) {
+    try {
+      final text = _decodeText(bytes);
+      // FAP ghi the co tien to namespace: <ss:Workbook ...>.
+      if (RegExp(r'<(\w+:)?Workbook\b').hasMatch(text) &&
+          (text.contains('schemas-microsoft-com:office:spreadsheet') ||
+              text.contains('progid="Excel.Sheet"'))) {
+        return _readSpreadsheetMl(text);
+      }
+    } catch (_) {}
+    throw const RosterFormatException(
+      'File .xls này là định dạng nhị phân cũ (BIFF8). '
+      'Hãy mở file trong Microsoft Excel và chọn Save As thành .xlsx hoặc CSV UTF-8.',
+    );
+  }
+
+  static List<List<String>> _readSpreadsheetMl(String text) {
+    try {
+      final doc = XmlDocument.parse(text);
+      final rows = <List<String>>[];
+      final worksheets = doc.findAllElements('Worksheet', namespaceUri: '*');
+      if (worksheets.isEmpty) {
+        throw const FormatException('Không tìm thấy Worksheet trong file Excel.');
+      }
+      final firstSheet = worksheets.first;
+      for (final rowEl in firstSheet.findAllElements('Row', namespaceUri: '*')) {
+        final row = <String>[];
+        for (final cellEl in rowEl.findElements('Cell', namespaceUri: '*')) {
+          final indexAttr =
+              cellEl.getAttribute('ss:Index') ?? cellEl.getAttribute('Index', namespaceUri: '*');
+          if (indexAttr != null) {
+            final targetIndex = int.tryParse(indexAttr);
+            if (targetIndex != null) {
+              while (row.length < targetIndex - 1) {
+                row.add('');
+              }
+            }
+          }
+          final dataEl = cellEl.findElements('Data', namespaceUri: '*').firstOrNull;
+          row.add(dataEl?.innerText.trim() ?? '');
+        }
+        rows.add(row);
+      }
+      return rows;
+    } on RosterFormatException {
+      rethrow;
+    } catch (e) {
+      throw RosterFormatException('Lỗi khi đọc file Excel XML: $e');
+    }
+  }
 
   /// Thu vien excel xung dot voi pdf ve phien ban xml, nen doc truc tiep sheet dau tien dang hien.
   static List<List<String>> _readXlsx(Uint8List bytes) {
@@ -354,6 +407,7 @@ class _Columns {
   final int name;
   final int email;
   final int member;
+  final int className;
   final int surname;
   final int middle;
   final int given;
@@ -363,6 +417,7 @@ class _Columns {
     required this.name,
     required this.email,
     required this.member,
+    required this.className,
     required this.surname,
     required this.middle,
     required this.given,
@@ -376,6 +431,7 @@ class _Columns {
       name: find(RosterParser._nameHeaders),
       email: find(RosterParser._emailHeaders),
       member: find(RosterParser._memberHeaders),
+      className: find(RosterParser._classHeaders),
       surname: find(RosterParser._surnameHeaders),
       middle: find(RosterParser._middleHeaders),
       given: find(RosterParser._givenHeaders),

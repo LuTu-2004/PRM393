@@ -49,7 +49,7 @@ class LoginScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
-                    'Dùng email trường: @fpt.edu.vn (sinh viên) hoặc @fe.edu.vn (giảng viên).',
+                    'Sinh viên đăng nhập bằng email có trong danh sách FAP của môn. Giảng viên dùng email @fe.edu.vn.',
                     style: text.bodySmall?.copyWith(color: AppColors.textSecondary),
                     textAlign: TextAlign.center,
                   ),

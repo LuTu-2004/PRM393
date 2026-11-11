@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:exe_matching/config/app_config.dart';
+import 'package:exe_matching/domain/room_rules.dart';
 import 'package:exe_matching/domain/roster_diff.dart';
 import 'package:exe_matching/domain/roster_parser.dart';
 import 'package:exe_matching/models/app_user.dart';
@@ -10,6 +11,7 @@ import 'package:exe_matching/models/roster_entry.dart';
 import 'package:exe_matching/models/space.dart';
 import 'package:exe_matching/services/admin_service.dart';
 import 'package:exe_matching/services/group_service.dart';
+import 'package:exe_matching/services/user_service.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -152,6 +154,57 @@ void main() {
       expect(result.issues.single.row, 5, reason: 'so dong khop voi file Excel');
     });
 
+    test('doc file .xls dang XML SpreadsheetML 2003 tu FAP thanh cong', () {
+      const xmlXls = '''<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Sheet1">
+  <Table>
+   <Row>
+    <Cell><Data ss:Type="String">Class</Data></Cell>
+    <Cell><Data ss:Type="String">RollNumber</Data></Cell>
+    <Cell><Data ss:Type="String">Email</Data></Cell>
+    <Cell><Data ss:Type="String">FullName</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">SE1919</Data></Cell>
+    <Cell><Data ss:Type="String">SE161484</Data></Cell>
+    <Cell><Data ss:Type="String">HoangVHSE161484@fpt.edu.vn</Data></Cell>
+    <Cell><Data ss:Type="String">Vũ Huy Hoàng</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>''';
+      final result = RosterParser.parse(_utf8(xmlXls), 'SE1919_FAP.xls');
+      expect(result.entries.length, 1);
+      expect(result.entries.first.studentCode, 'SE161484');
+      expect(result.entries.first.fullName, 'Vũ Huy Hoàng');
+      expect(result.entries.first.email, 'hoangvhse161484@fpt.edu.vn');
+      expect(result.entries.first.className, 'SE1919');
+    });
+
+    test('file FAP that: BOM va the co tien to ss:Workbook', () {
+      const xmlXls =
+          '﻿<?xml version="1.0"?>\r\n'
+          '<?mso-application progid="Excel.Sheet"?>\r\n'
+          '<ss:Workbook xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+          '<ss:Worksheet ss:Name="Sheet1"><ss:Table>'
+          '<ss:Row><ss:Cell><ss:Data ss:Type="String">Class</ss:Data></ss:Cell>'
+          '<ss:Cell><ss:Data ss:Type="String">RollNumber</ss:Data></ss:Cell>'
+          '<ss:Cell><ss:Data ss:Type="String">Email</ss:Data></ss:Cell>'
+          '<ss:Cell><ss:Data ss:Type="String">FullName</ss:Data></ss:Cell></ss:Row>'
+          '<ss:Row><ss:Cell><ss:Data ss:Type="String">SE1919</ss:Data></ss:Cell>'
+          '<ss:Cell><ss:Data ss:Type="String">SE194226</ss:Data></ss:Cell>'
+          '<ss:Cell><ss:Data ss:Type="String">phamnguyenvu110905@gmail.com</ss:Data></ss:Cell>'
+          '<ss:Cell><ss:Data ss:Type="String">Phạm Nguyên Vũ</ss:Data></ss:Cell></ss:Row>'
+          '</ss:Table></ss:Worksheet></ss:Workbook>';
+      final result = RosterParser.parse(_utf8(xmlXls), 'danh-sach.xls');
+      expect(result.entries.single.studentCode, 'SE194226');
+      expect(result.entries.single.email, 'phamnguyenvu110905@gmail.com');
+      expect(result.entries.single.className, 'SE1919');
+    });
+
     test('file hong va .xls cu bao loi ro rang, duoi khac bi tu choi', () {
       expect(
         () => RosterParser.parse(_utf8('khong phai zip'), 'list.xlsx'),
@@ -252,7 +305,7 @@ void main() {
 
     setUp(() async {
       db = FakeFirebaseFirestore();
-      admin = AdminService(firestore: db, clock: () => now);
+      admin = AdminService(firestore: db, clock: () => now.add(const Duration(days: 31)));
       groups = GroupService(firestore: db, clock: () => now);
       await admin.createSpace(
         term: AppConfig.currentTerm,
@@ -267,7 +320,7 @@ void main() {
 
     test('import ghi danh sach, doi so sinh vien va tao them Room', () async {
       final added = await admin.importRoster(await space(), RosterDiff.of(const [], entries(50)));
-      expect(added, 2);
+      expect(added.added, 2);
       expect(await count(Collections.enrollments), 50);
       expect(await count(Collections.rooms), 12);
       final s = await space();
@@ -275,17 +328,163 @@ void main() {
       expect(s.studentCount, 50);
     });
 
-    test('import lai bo nguoi khong con trong file, khong xoa Room', () async {
+    test('import lai bo nguoi khong con trong file, xoa Room trong thua', () async {
       final first = entries(50);
       await admin.importRoster(await space(), RosterDiff.of(const [], first));
-      final added = await admin.importRoster(
+      final change = await admin.importRoster(
         await space(),
         RosterDiff.of(first, first.sublist(0, 10)),
       );
-      expect(added, 0);
+      expect(change.added, 0);
+      expect(change.removed, 9, reason: '10 SV -> ceil(10 / 5 x 1,2) = 3 Room');
       expect(await count(Collections.enrollments), 10);
-      expect(await count(Collections.rooms), 12);
+      expect(await count(Collections.rooms), 3);
       expect((await space()).rosterCount, 10);
+    });
+
+    group('import theo tung lop va dong bo Room', () {
+      List<RosterEntry> classOf(String className, int from, int count) => [
+        for (var i = from; i < from + count; i++)
+          RosterEntry(
+            studentCode: 'SE19${i.toString().padLeft(4, '0')}',
+            fullName: 'SV $i',
+            email: 'svse19${i.toString().padLeft(4, '0')}@fpt.edu.vn',
+            className: className,
+          ),
+      ];
+      Future<List<RosterEntry>> stored() async =>
+          (await db.collection(Collections.enrollments).where('spaceId', isEqualTo: spaceId).get())
+              .docs
+              .map((d) => RosterEntry.fromMap(d.data()))
+              .toList();
+      String roomId(int n) => RoomRules.roomCode(AppConfig.currentTerm, 'EXE101', n);
+
+      test('import lop thu hai cong don, khong xoa lop thu nhat', () async {
+        final se1919 = classOf('SE1919', 1, 38);
+        final se1920 = classOf('SE1920', 100, 30);
+        await admin.importRoster(await space(), RosterDiff.of(const [], se1919));
+        expect(await count(Collections.rooms), 10, reason: 'ceil(38 / 5 x 1,2) = 10');
+
+        final diff = RosterDiff.of(await stored(), se1920);
+        expect(diff.removed, isEmpty);
+        expect(diff.kept.length, 38);
+        expect(diff.total, 68);
+        final change = await admin.importRoster(await space(), diff);
+        expect(change.added, 7);
+        expect(await count(Collections.rooms), 17, reason: 'ceil(68 / 5 x 1,2) = 17');
+        expect((await space()).rosterCount, 68);
+        expect((await space()).studentCount, 68);
+
+        final users = UserService(firestore: db, clock: () => now);
+        expect(await users.rosterStudentCode(se1919.first.email!), isNotNull);
+        expect(await users.rosterStudentCode(se1920.first.email!), isNotNull);
+      });
+
+      test('import lai mot lop chi thay lop do', () async {
+        final se1919 = classOf('SE1919', 1, 38);
+        final se1920 = classOf('SE1920', 100, 30);
+        await admin.importRoster(await space(), RosterDiff.of(const [], se1919));
+        await admin.importRoster(await space(), RosterDiff.of(await stored(), se1920));
+
+        final diff = RosterDiff.of(await stored(), se1919.sublist(0, 30));
+        expect(diff.removed.length, 8);
+        expect(diff.removed.every((e) => e.className == 'SE1919'), isTrue);
+        await admin.importRoster(await space(), diff);
+        expect((await space()).rosterCount, 60);
+        expect(await count(Collections.rooms), 15, reason: 'ceil(60 / 5 x 1,2) = 15');
+
+        final users = UserService(firestore: db, clock: () => now);
+        expect(await users.rosterStudentCode(se1919.last.email!), isNull);
+        expect(await users.rosterStudentCode(se1920.last.email!), isNotNull);
+      });
+
+      test('sinh vien chuyen lop thi cap nhat, khong nhan doi', () async {
+        final se1919 = classOf('SE1919', 1, 5);
+        await admin.importRoster(await space(), RosterDiff.of(const [], se1919));
+        final first = se1919.first;
+        final moved = [
+          RosterEntry(
+            studentCode: first.studentCode,
+            fullName: first.fullName,
+            email: first.email,
+            className: 'SE1920',
+          ),
+        ];
+        final diff = RosterDiff.of(await stored(), moved);
+        expect(diff.updated.length, 1);
+        expect(diff.total, 5);
+      });
+
+      test('ban ghi cu chua co lop duoc giu khi import file co lop', () async {
+        await admin.importRoster(await space(), RosterDiff.of(const [], entries(5)));
+        final diff = RosterDiff.of(await stored(), classOf('SE1920', 100, 3));
+        expect(diff.removed, isEmpty);
+        expect(diff.total, 8);
+      });
+
+      test('Room co nguoi hoac co don Apply thi khong bi xoa', () async {
+        await admin.importRoster(await space(), RosterDiff.of(const [], entries(50)));
+        expect(await count(Collections.rooms), 12);
+        await groups.joinRoom(student('SE180001'), roomId(12));
+        await db.collection(Collections.applications).add({
+          'spaceId': spaceId,
+          'roomId': roomId(11),
+          'applicantId': 'se180002',
+          'status': 'pending',
+        });
+
+        await admin.importRoster(await space(), RosterDiff.of(entries(50), entries(5)));
+        final left = (await db.collection(Collections.rooms).get()).docs.map((d) => d.id).toSet();
+        expect(left, {roomId(11), roomId(12)}, reason: 'can 2 Room, giu dung 2 Room dang dung');
+      });
+
+      test('xoa Room roi tang lai thi dien vao so thu tu con trong', () async {
+        await admin.importRoster(await space(), RosterDiff.of(const [], entries(50)));
+        await admin.importRoster(await space(), RosterDiff.of(entries(50), entries(10)));
+        await admin.importRoster(await space(), RosterDiff.of(entries(10), entries(20)));
+        final ids = (await db.collection(Collections.rooms).get()).docs.map((d) => d.id).toList()
+          ..sort();
+        expect(ids, [for (var i = 1; i <= 5; i++) roomId(i)]);
+      });
+
+      test('mon da co danh sach thi khong sua tay so sinh vien', () async {
+        await admin.importRoster(await space(), RosterDiff.of(const [], entries(10)));
+        final s = await space();
+        await expectLater(
+          () => admin.updateSpaceConfig(
+            space: s,
+            maxGroupSize: 5,
+            reservePercent: 120,
+            applyLimit: 4,
+            studentCount: 100,
+            registrationDeadline: now.add(const Duration(days: 30)),
+          ),
+          throwsA(isA<BusinessException>()),
+        );
+        await admin.updateSpaceConfig(
+          space: s,
+          maxGroupSize: 5,
+          reservePercent: 120,
+          applyLimit: 4,
+          studentCount: 10,
+          registrationDeadline: now.add(const Duration(days: 30)),
+        );
+        expect((await space()).applyLimit, 4);
+      });
+
+      test('doc cot Class trong file FAP', () {
+        final result = RosterParser.parse(
+          _utf8(
+            'Class,RollNumber,Email,MemberCode,FullName\n'
+            'se1919,SE185045,TrongTMSE185045@fpt.edu.vn,TrongTMSE185045,Minh Trọng\n'
+            'SE1919,SE194226,phamnguyenvu110905@gmail.com,VuPNSE194226,Phạm Nguyên Vũ\n',
+          ),
+          'lop.csv',
+        );
+        expect(result.entries.map((e) => e.className), ['SE1919', 'SE1919']);
+        expect(result.entries.first.email, 'trongtmse185045@fpt.edu.vn');
+        expect(result.entries.last.email, 'phamnguyenvu110905@gmail.com');
+      });
     });
 
     test('da chot so thi khong import duoc', () async {
@@ -347,6 +546,99 @@ void main() {
       await admin.seedDemoStudents(await space());
       expect(await count(Collections.enrollments), 10);
       expect((await space()).rosterCount, 10, reason: 'tao lai khong dem trung');
+    });
+
+    group('dang nhap theo email trong danh sach FAP', () {
+      const trong = RosterEntry(
+        studentCode: 'SE185045',
+        fullName: 'Minh Trọng',
+        email: 'trongtmse185045@fpt.edu.vn',
+      );
+      const vu = RosterEntry(
+        studentCode: 'SE194226',
+        fullName: 'Phạm Nguyên Vũ',
+        email: 'phamnguyenvu110905@gmail.com',
+      );
+      late UserService users;
+      setUp(() => users = UserService(firestore: db, clock: () => now));
+
+      test('chua import thi khong ai dang nhap duoc', () async {
+        expect(await users.rosterStudentCode(trong.email!), isNull);
+      });
+
+      test(
+        'import xong: email trong file dang nhap duoc, ke ca gmail; email khac thi khong',
+        () async {
+          await admin.importRoster(await space(), RosterDiff.of(const [], [trong, vu]));
+          expect(await users.rosterStudentCode('TrongTMSE185045@fpt.edu.vn'), 'SE185045');
+          expect(await users.rosterStudentCode('phamnguyenvu110905@gmail.com'), 'SE194226');
+          expect(
+            await users.rosterStudentCode('vupnse194226@fpt.edu.vn'),
+            isNull,
+            reason: 'so theo email trong danh sach, khong so theo MSSV',
+          );
+          expect(await users.rosterStudentCode('nguoingoai@fpt.edu.vn'), isNull);
+        },
+      );
+
+      test('ho so tao tu email gmail lay MSSV tu danh sach, khong tach tu gmail', () async {
+        final noRoster = await users.ensureUser(uid: 'x', email: 'abc123456@gmail.com');
+        expect(noRoster.studentCode, isNull);
+
+        await admin.importRoster(await space(), RosterDiff.of(const [], [vu]));
+        final u = await users.ensureUser(
+          uid: 'vu',
+          email: vu.email!,
+          displayName: 'Vũ',
+          studentCode: await users.rosterStudentCode(vu.email!),
+        );
+        expect(u.studentCode, 'SE194226');
+        expect(u.major, 'SE');
+        expect(u.cohort, 'K19');
+      });
+
+      test('bi xoa khoi file hoac doi email thi email cu het dang nhap', () async {
+        await admin.importRoster(await space(), RosterDiff.of(const [], [trong, vu]));
+        const vuNewEmail = RosterEntry(
+          studentCode: 'SE194226',
+          fullName: 'Phạm Nguyên Vũ',
+          email: 'vupnse194226@fpt.edu.vn',
+        );
+        await admin.importRoster(await space(), RosterDiff.of([trong, vu], [vuNewEmail]));
+        expect(await users.rosterStudentCode(trong.email!), isNull);
+        expect(await users.rosterStudentCode(vu.email!), isNull);
+        expect(await users.rosterStudentCode(vuNewEmail.email!), 'SE194226');
+      });
+
+      test('import lai file cu khong doi van ghi email (danh sach import truoc ban nay)', () async {
+        await db
+            .collection(Collections.enrollments)
+            .doc(RosterEntry.idFor(spaceId, trong.studentCode))
+            .set(trong.toMap(spaceId));
+        await admin.importRoster(await space(), RosterDiff.of([trong], [trong]));
+        expect(await users.rosterStudentCode(trong.email!), 'SE185045');
+      });
+
+      test('con trong mon khac thi van dang nhap duoc', () async {
+        await admin.createSpace(
+          term: AppConfig.currentTerm,
+          courseCode: 'EXE201',
+          maxGroupSize: 5,
+          reservePercent: 120,
+          applyLimit: 3,
+          studentCount: 10,
+          registrationDeadline: now.add(const Duration(days: 30)),
+        );
+        final other = Space.fromMap(
+          '${AppConfig.currentTerm}_EXE201',
+          (await db.collection(Collections.spaces).doc('${AppConfig.currentTerm}_EXE201').get())
+              .data()!,
+        );
+        await admin.importRoster(await space(), RosterDiff.of(const [], [trong]));
+        await admin.importRoster(other, RosterDiff.of(const [], [trong]));
+        await admin.importRoster(await space(), RosterDiff.of([trong], const []));
+        expect(await users.rosterStudentCode(trong.email!), 'SE185045');
+      });
     });
   });
 }

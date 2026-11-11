@@ -13,6 +13,19 @@ import 'package:exe_matching/models/space.dart';
 import 'package:exe_matching/models/transfer_request.dart';
 import 'package:exe_matching/services/group_service.dart';
 
+/// So Room tao them va xoa bot sau khi dong bo theo cong thuc BR-09.
+class RoomChange {
+  final int added;
+  final int removed;
+  const RoomChange({this.added = 0, this.removed = 0});
+
+  /// Thong diep them vao sau cau bao thanh cong, rong neu khong doi gi.
+  String get summary => [
+    if (added > 0) 'tạo thêm $added Room',
+    if (removed > 0) 'xóa $removed Room trống thừa',
+  ].join(', ');
+}
+
 /// Nghiep vu cua giang vien tren web: import danh sach FAP, cau hinh mon, tao Room, phan phoi
 /// sinh vien le, chot so, chuyen nhom (BR-01, BR-08, BR-09, BR-30 - BR-33, BR-35 - BR-37).
 class AdminService {
@@ -34,6 +47,8 @@ class AdminService {
       _db.collection(Collections.transferRequests);
   CollectionReference<Map<String, dynamic>> get _enrollments =>
       _db.collection(Collections.enrollments);
+  CollectionReference<Map<String, dynamic>> get _allowedEmails =>
+      _db.collection(Collections.allowedEmails);
 
   // --- Doc du lieu ----------------------------------------------------------
 
@@ -95,22 +110,42 @@ class AdminService {
 
   // --- Danh sach FAP (BR-01) ------------------------------------------------
 
-  /// Ghi danh sach moi, roi lay si so that lam so sinh vien va tao them Room con thieu (BR-09).
-  /// Khong xoa Room thua. rosterCount ghi sau cung de BR-01 chi bat khi danh sach da ghi xong.
-  /// Tra ve so Room tao them.
-  Future<int> importRoster(Space space, RosterDiff diff) async {
+  /// Ghi danh sach moi (thay cac lop co trong file, giu cac lop khac), roi lay tong so sinh vien
+  /// cua mon lam si so va dong bo so Room theo BR-09: thieu thi tao, thua thi xoa Room trong.
+  /// Dong thoi cap nhat allowed_emails: chi email co trong danh sach FAP moi dang nhap duoc app.
+  Future<RoomChange> importRoster(Space space, RosterDiff diff) async {
     _requireNotFinalized(space);
+    final changed = [...diff.added, ...diff.updated];
+    final current = diff.incoming.isEmpty ? changed : diff.incoming;
+    final currentEmails = {
+      for (final e in [...current, ...diff.kept]) ?e.email,
+    };
     await _commitChunks([
-      for (final e in [...diff.added, ...diff.updated])
+      for (final e in changed)
         (b) => b.set(_enrollments.doc(RosterEntry.idFor(space.id, e.studentCode)), {
           ...e.toMap(space.id),
           'importedAt': writeDate(_now()),
         }),
       for (final e in diff.removed)
         (b) => b.delete(_enrollments.doc(RosterEntry.idFor(space.id, e.studentCode))),
+      // Go email khong con trong mon (bi xoa khoi file hoac doi email) truoc khi them moi.
+      for (final e in [...diff.removed, ...diff.replaced])
+        if (e.email != null && !currentEmails.contains(e.email))
+          (b) => b.set(_allowedEmails.doc(e.email), {
+            'spaceIds': FieldValue.arrayRemove([space.id]),
+          }, SetOptions(merge: true)),
+      for (final e in current)
+        if (e.email != null)
+          (b) => b.set(_allowedEmails.doc(e.email), {
+            'email': e.email,
+            'studentCode': e.studentCode,
+            'fullName': e.fullName,
+            'spaceIds': FieldValue.arrayUnion([space.id]),
+            'updatedAt': writeDate(_now()),
+          }, SetOptions(merge: true)),
       (b) => b.update(_spaces.doc(space.id), {'rosterCount': diff.total}),
     ]);
-    return updateSpaceConfig(
+    return _applyConfig(
       space: space,
       maxGroupSize: space.maxGroupSize,
       reservePercent: space.reservePercent,
@@ -161,8 +196,33 @@ class AdminService {
   }
 
   /// BR-23: doi gioi han Apply khong dung den don da gui. Si so chi doi khi chua co ai vao Room.
-  /// Tang so sinh vien hoac he so thi tao them Room con thieu.
-  Future<int> updateSpaceConfig({
+  /// So Room luon theo cong thuc BR-09. Mon da import danh sach FAP thi so sinh vien lay tu danh
+  /// sach, khong sua tay duoc.
+  Future<RoomChange> updateSpaceConfig({
+    required Space space,
+    required int maxGroupSize,
+    required int reservePercent,
+    required int applyLimit,
+    required int studentCount,
+    required DateTime registrationDeadline,
+  }) {
+    if (space.rosterCount > 0 && studentCount != space.rosterCount) {
+      throw BusinessException(
+        'Môn đã có danh sách FAP nên số sinh viên là ${space.rosterCount}, '
+        'muốn đổi hãy import lại danh sách.',
+      );
+    }
+    return _applyConfig(
+      space: space,
+      maxGroupSize: maxGroupSize,
+      reservePercent: reservePercent,
+      applyLimit: applyLimit,
+      studentCount: studentCount,
+      registrationDeadline: registrationDeadline,
+    );
+  }
+
+  Future<RoomChange> _applyConfig({
     required Space space,
     required int maxGroupSize,
     required int reservePercent,
@@ -182,7 +242,18 @@ class AdminService {
       maxGroupSize: maxGroupSize,
       reservePercent: reservePercent,
     );
-    final maxNumber = rooms.fold<int>(0, (m, r) => r.number > m ? r.number : m);
+
+    // Thieu: tao Room, dien vao so thu tu con trong truoc (sau khi da xoa) roi moi noi tiep.
+    final used = {for (final r in rooms) r.number};
+    final toAdd = <int>[];
+    for (var i = 1; toAdd.length < wanted - rooms.length; i++) {
+      if (!used.contains(i)) toAdd.add(i);
+    }
+    // Thua: chi xoa Room trong, chua tung co don Apply va khong ai xin chuyen vao, so lon truoc.
+    final toRemove = rooms.length > wanted
+        ? await _removableRooms(space.id, rooms, rooms.length - wanted)
+        : const <Room>[];
+
     await _commitChunks([
       (b) => b.update(_spaces.doc(space.id), {
         'maxGroupSize': maxGroupSize,
@@ -192,8 +263,11 @@ class AdminService {
         'registrationDeadline': writeDate(registrationDeadline),
       }),
       if (maxGroupSize != space.maxGroupSize)
-        for (final r in rooms) (b) => b.update(_rooms.doc(r.id), {'maxGroupSize': maxGroupSize}),
-      for (var i = maxNumber + 1; i <= wanted; i++)
+        for (final r in rooms)
+          if (!toRemove.contains(r))
+            (b) => b.update(_rooms.doc(r.id), {'maxGroupSize': maxGroupSize}),
+      for (final r in toRemove) (b) => b.delete(_rooms.doc(r.id)),
+      for (final i in toAdd)
         (b) {
           final code = RoomRules.roomCode(space.term, space.courseCode, i);
           b.set(
@@ -202,7 +276,26 @@ class AdminService {
           );
         },
     ]);
-    return wanted > maxNumber ? wanted - maxNumber : 0;
+    return RoomChange(added: toAdd.length, removed: toRemove.length);
+  }
+
+  Future<List<Room>> _removableRooms(String spaceId, List<Room> rooms, int count) async {
+    final applied = (await _applications.where('spaceId', isEqualTo: spaceId).get()).docs
+        .map((d) => d.data()['roomId'] as String?)
+        .toSet();
+    final transferTargets = (await _transfers.where('spaceId', isEqualTo: spaceId).get()).docs
+        .where((d) => d.data()['status'] == TransferStatus.pending.name)
+        .map((d) => d.data()['toRoomId'] as String?)
+        .toSet();
+    final candidates =
+        rooms
+            .where(
+              (r) =>
+                  r.members.isEmpty && !applied.contains(r.id) && !transferTargets.contains(r.id),
+            )
+            .toList()
+          ..sort((a, b) => b.number.compareTo(a.number));
+    return candidates.take(count).toList();
   }
 
   void _validateConfig(int size, int percent, int limit, int students) {
@@ -219,6 +312,7 @@ class AdminService {
   /// Lap ke hoach de giang vien xem truoc, chua ghi gi.
   Future<DistributionPlan> previewDistribution(Space space, List<AppUser> strays) async {
     _requireNotFinalized(space);
+    _requireRegistrationClosed(space); // BR-30: het han dang ky moi loc sinh vien le
     if (strays.isEmpty) throw const BusinessException('Không còn sinh viên chưa có nhóm.');
     final snapshot = await _rooms.where('spaceId', isEqualTo: space.id).get();
     final rooms = snapshot.docs.map((d) => Room.fromMap(d.id, d.data())).toList();
@@ -254,6 +348,7 @@ class AdminService {
   /// Ghi ke hoach trong transaction: neu sinh vien vua co nhom hoac Room vua het cho thi dung.
   Future<void> applyDistribution(Space space, DistributionPlan plan) async {
     _requireNotFinalized(space);
+    _requireRegistrationClosed(space);
     final now = _now();
     await _db.runTransaction((tx) async {
       final rooms = <String, Room>{};
@@ -327,10 +422,60 @@ class AdminService {
     );
   }
 
-  // --- Chot so (BR-33) -----------------------------------------------------
+  // --- Chot so (BR-30, BR-33) ---------------------------------------------
 
+  /// BR-30: sinh vien da dang nhap va chon mon nhung chua co nhom. Mon da import danh sach FAP thi
+  /// chi tinh nguoi co ten trong danh sach. Doc thang Firestore de khong phu thuoc giao dien.
+  Future<List<AppUser>> strayStudents(Space space) async {
+    final users = await _users.where('courseCode', isEqualTo: space.courseCode).get();
+    final assigned = (await _memberships.where('spaceId', isEqualTo: space.id).get()).docs
+        .map((d) => d.data()['uid'] as String?)
+        .toSet();
+    final rosterCodes = space.rosterCount == 0
+        ? null
+        : (await _enrollments.where('spaceId', isEqualTo: space.id).get()).docs
+              .map((d) => d.data()['studentCode'] as String?)
+              .toSet();
+    return users.docs
+        .map((d) => AppUser.fromMap(d.id, d.data()))
+        .where((u) => !u.isLecturer && !assigned.contains(u.uid))
+        .where((u) => rosterCodes == null || rosterCodes.contains(u.studentCode))
+        .toList();
+  }
+
+  /// BR-30, BR-33: chi chot sau han dang ky va khi moi sinh vien da co nhom. Con sinh vien le thi
+  /// dung [distributeAndFinalize] de phan phoi theo ke hoach giang vien da xem roi chot.
   Future<void> finalizeSpace(Space space) async {
     _requireNotFinalized(space);
+    _requireRegistrationClosed(space);
+    final strays = await strayStudents(space);
+    if (strays.isNotEmpty) {
+      throw BusinessException(
+        'Còn ${strays.length} sinh viên chưa có nhóm. Hãy phân phối trước khi chốt sổ.',
+      );
+    }
+    await _lockSpace(space);
+  }
+
+  /// Bam "Chot so" khi con sinh vien le: ap dung ke hoach phan phoi giang vien vua xem roi chot.
+  /// Neu co nguoi vua tu vao nhom hoac Room vua doi, applyDistribution dung lai va chua chot gi.
+  Future<void> distributeAndFinalize(Space space, DistributionPlan plan) async {
+    _requireNotFinalized(space);
+    _requireRegistrationClosed(space);
+    await applyDistribution(space, plan);
+    final fresh = await _spaces.doc(space.id).get();
+    await finalizeSpace(Space.fromMap(fresh.id, fresh.data()!));
+  }
+
+  void _requireRegistrationClosed(Space space) {
+    if (_now().isBefore(space.registrationDeadline)) {
+      throw const BusinessException(
+        'Chưa hết hạn đăng ký nhóm. Chỉ phân phối và chốt sổ sau hạn đăng ký.',
+      );
+    }
+  }
+
+  Future<void> _lockSpace(Space space) async {
     final rooms = await _rooms.where('spaceId', isEqualTo: space.id).get();
     await _commitChunks([
       (b) => b.update(_spaces.doc(space.id), {'finalized': true}),

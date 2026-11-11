@@ -11,8 +11,9 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/// Dang nhap bang Google voi email truong (BR-02). Day la cach dang nhap duy nhat:
-/// khong co mat khau, khong co nut demo (BR-01: chi kiem tra duoi email).
+/// Dang nhap bang Google. Day la cach dang nhap duy nhat: khong co mat khau, khong co nut demo.
+/// Ai duoc vao do ViewModel quyet dinh: giang vien theo duoi email @fe.edu.vn, sinh vien phai
+/// co email trong danh sach FAP moderator da import (BR-01), ke ca email ca nhan.
 class AuthService {
   final FirebaseAuth _auth;
 
@@ -20,12 +21,6 @@ class AuthService {
 
   Stream<User?> authStateChanges() => _auth.authStateChanges();
   User? get currentUser => _auth.currentUser;
-
-  static bool isSchoolEmail(String? email) {
-    final lower = (email ?? '').trim().toLowerCase();
-    return lower.endsWith(AppConfig.studentEmailDomain) ||
-        lower.endsWith(AppConfig.lecturerEmailDomain);
-  }
 
   static bool isLecturerEmail(String email) =>
       email.trim().toLowerCase().endsWith(AppConfig.lecturerEmailDomain);
@@ -35,21 +30,13 @@ class AuthService {
       ..addScope('email')
       ..setCustomParameters({'prompt': 'select_account'});
 
-    if (kIsWeb) {
-      // Tren Web (dac biet la Chrome / Coc Coc localhost), popup bi Cross-Origin-Opener-Policy
-      // chan window.closed va giao tiep postMessage.
-      // signInWithRedirect chuyen huong truc tiep, khong bao gio bi popup blocker chan.
-      try {
-        await _auth.signInWithRedirect(provider);
-      } on FirebaseAuthException catch (e) {
-        throw AuthException('Đăng nhập thất bại (${e.code}).');
-      }
-      return Completer<User>().future;
-    }
-
     final UserCredential credential;
     try {
-      credential = await _auth.signInWithProvider(provider);
+      if (kIsWeb) {
+        credential = await _auth.signInWithPopup(provider);
+      } else {
+        credential = await _auth.signInWithProvider(provider);
+      }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'web-context-canceled' ||
           e.code == 'canceled' ||
@@ -64,11 +51,9 @@ class AuthService {
 
     final user = credential.user;
     if (user == null) throw const AuthException('Không nhận được thông tin tài khoản Google.');
-    if (!isSchoolEmail(user.email)) {
+    if ((user.email ?? '').isEmpty) {
       await _auth.signOut();
-      throw const AuthException(
-        'Chỉ chấp nhận email trường (@fpt.edu.vn cho sinh viên, @fe.edu.vn cho giảng viên).',
-      );
+      throw const AuthException('Tài khoản Google này không có email.');
     }
     return user;
   }

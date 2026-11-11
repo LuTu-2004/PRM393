@@ -56,12 +56,29 @@ class AuthViewModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (!AuthService.isSchoolEmail(firebaseUser.email)) {
-      // Phien cu tu tai khoan ngoai truong: dang xuat (BR-01, BR-02).
-      await _auth.signOut();
-      return;
+    final email = firebaseUser.email ?? '';
+    String? rosterCode;
+    if (!AuthService.isLecturerEmail(email)) {
+      // BR-01: sinh vien chi dang nhap duoc khi email co trong danh sach FAP da import.
+      _status = AuthStatus.loadingProfile;
+      notifyListeners();
+      try {
+        rosterCode = await _users.rosterStudentCode(email);
+      } catch (e, stack) {
+        await _crashlytics.recordHandled(e, stack, action: 'check_roster');
+        _error = friendlyError(e);
+        await _auth.signOut();
+        return;
+      }
+      if (rosterCode == null) {
+        _error =
+            'Email $email chưa có trong danh sách FAP. '
+            'Hãy đăng nhập đúng email trong danh sách hoặc liên hệ giảng viên.';
+        await _auth.signOut();
+        return;
+      }
     }
-    await _loadProfile(firebaseUser);
+    await _loadProfile(firebaseUser, studentCode: rosterCode);
   }
 
   /// Mot so tai khoan khong co displayName o User, chi co trong providerData.
@@ -96,7 +113,7 @@ class AuthViewModel extends ChangeNotifier {
     _lastGate = gate;
   }
 
-  Future<void> _loadProfile(User firebaseUser) async {
+  Future<void> _loadProfile(User firebaseUser, {String? studentCode}) async {
     _status = AuthStatus.loadingProfile;
     _error = null;
     notifyListeners();
@@ -106,6 +123,7 @@ class AuthViewModel extends ChangeNotifier {
         email: firebaseUser.email!,
         displayName: _displayNameOf(firebaseUser),
         photoUrl: firebaseUser.photoURL,
+        studentCode: studentCode,
       );
       _userSub = _users
           .watchUser(firebaseUser.uid)
@@ -136,7 +154,7 @@ class AuthViewModel extends ChangeNotifier {
 
   Future<void> retryLoadProfile() async {
     final current = _auth.currentUser;
-    if (current != null) await _loadProfile(current);
+    if (current != null) await _onAuthChanged(current);
   }
 
   Future<void> signIn() async {

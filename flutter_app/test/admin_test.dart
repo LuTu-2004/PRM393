@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final now = DateTime(2026, 11, 1);
+  final afterDeadline = now.add(const Duration(days: 31));
 
   AppUser student(
     String id, {
@@ -155,7 +156,8 @@ void main() {
 
     setUp(() {
       db = FakeFirebaseFirestore();
-      admin = AdminService(firestore: db, clock: () => now);
+      // Sinh vien thao tac trong han dang ky, giang vien phan phoi va chot sau han (BR-30).
+      admin = AdminService(firestore: db, clock: () => afterDeadline);
       groups = GroupService(firestore: db, clock: () => now);
     });
 
@@ -190,7 +192,7 @@ void main() {
         studentCount: 50,
         registrationDeadline: now.add(const Duration(days: 30)),
       );
-      expect(added, 2);
+      expect(added.added, 2);
       expect((await space()).applyLimit, 4);
 
       await groups.joinRoom(student('a'), 'FA26EXE101-01');
@@ -253,6 +255,77 @@ void main() {
         () => groups.leaveRoom(student('a'), 'FA26EXE101-01'),
         throwsA(isA<BusinessException>()),
       );
+    });
+
+    group('Chot so va phan phoi (BR-30 - BR-33)', () {
+      test('chua het han dang ky thi khong phan phoi, khong chot', () async {
+        await createDefault();
+        final early = AdminService(firestore: db, clock: () => now);
+        final s = student('x');
+        await saveUser(s);
+        final matcher = throwsA(
+          isA<BusinessException>().having((e) => e.message, 'message', contains('hạn đăng ký')),
+        );
+        await expectLater(() async => early.previewDistribution(await space(), [s]), matcher);
+        await expectLater(() async => early.finalizeSpace(await space()), matcher);
+      });
+
+      test('con sinh vien le thi chot so bi chan', () async {
+        await createDefault();
+        await saveUser(student('x'));
+        await expectLater(
+          () async => admin.finalizeSpace(await space()),
+          throwsA(
+            isA<BusinessException>().having((e) => e.message, 'message', contains('phân phối')),
+          ),
+        );
+        expect((await space()).finalized, isFalse);
+      });
+
+      test('phan phoi va chot: lap nhom chua du truoc, roi khoa', () async {
+        await createDefault();
+        for (final id in ['a', 'b', 'c']) {
+          final u = student(id);
+          await saveUser(u);
+          await groups.joinRoom(u, 'FA26EXE101-01');
+        }
+        final strays = [student('x'), student('y')];
+        for (final u in strays) {
+          await saveUser(u);
+        }
+        expect((await admin.strayStudents(await space())).map((u) => u.uid).toSet(), {'x', 'y'});
+
+        final plan = await admin.previewDistribution(await space(), strays);
+        await admin.distributeAndFinalize(await space(), plan);
+
+        expect(await membershipRoom('x'), 'FA26EXE101-01');
+        expect(await membershipRoom('y'), 'FA26EXE101-01');
+        expect((await room('FA26EXE101-01')).memberCount, 5);
+        expect((await space()).finalized, isTrue);
+        expect(await admin.strayStudents(await space()), isEmpty);
+      });
+
+      test('ke hoach cu (co nguoi vua tu vao nhom) thi khong chot gi', () async {
+        await createDefault();
+        final s = student('x');
+        await saveUser(s);
+        final plan = await admin.previewDistribution(await space(), [s]);
+        await groups.joinRoom(s, 'FA26EXE101-05');
+        await expectLater(
+          () async => admin.distributeAndFinalize(await space(), plan),
+          throwsA(isA<BusinessException>()),
+        );
+        expect((await space()).finalized, isFalse);
+      });
+
+      test('khong con sinh vien le thi chot duoc ngay', () async {
+        await createDefault();
+        final u = student('a');
+        await saveUser(u);
+        await groups.joinRoom(u, 'FA26EXE101-01');
+        await admin.finalizeSpace(await space());
+        expect((await space()).finalized, isTrue);
+      });
     });
 
     group('Chuyen nhom', () {
