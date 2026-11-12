@@ -248,6 +248,49 @@ def fix_slide_8(slide):
             s.top = Pt(58)
 
 # ─────────────────────────────────────────────────────────────
+# SLIDE 10: System Architecture & Deployment
+# ─────────────────────────────────────────────────────────────
+def fix_slide_10(slide):
+    for s in slide.shapes:
+        if s.has_text_frame:
+            for p in s.text_frame.paragraphs:
+                txt = p.text.strip()
+                if "Web App → Gateway" in txt:
+                    p.text = "Client Flutter (Mobile & Web) kết nối trực tiếp Firebase Cloud qua Firebase SDK chính hãng (Auth, Firestore, Remote Config, Crashlytics)."
+                elif "REST, Group gọi Matching" in txt or "Đồng bộ: REST" in txt:
+                    p.text = "Đồng bộ thời gian thực: Firestore Real-time Snapshot Streams. Đẩy thông báo tức thì: FCM HTTP v1 push notifications đến thiết bị di động."
+                elif "Firebase Compose: 12 container" in txt or "12 container" in txt:
+                    p.text = "Hạ tầng Serverless Cloud: Hoàn toàn chạy trên Google Firebase Platform; không cần quản lý máy chủ hay container phức tạp."
+                elif "SQL Server (database-per-service)" in txt or "Mỗi service một database" in txt or "SQL Server" in txt:
+                    p.text = "Cơ sở dữ liệu NoSQL Cloud Firestore: Phân tách dữ liệu theo Collections & Sub-collections; bảo vệ bằng Firestore Security Rules."
+                elif "Sơ đồ Container (C4 – Level 2)" in txt:
+                    p.text = "Sơ đồ Kiến trúc Hệ thống (System Architecture)"
+
+# ─────────────────────────────────────────────────────────────
+# SLIDE 11: Technology Stack Table
+# ─────────────────────────────────────────────────────────────
+def fix_slide_11(slide):
+    for s in slide.shapes:
+        if s.has_table:
+            table = s.table
+            rows_data = [
+                ("FE", "Flutter 3.x • Dart 3 • Material 3 • Provider", "Xây dựng ứng dụng di động Android & Web Admin theo kiến trúc MVVM đa nền tảng"),
+                ("Cloud Backend", "Firebase Firestore • Firebase Auth • Cloud Functions", "Lưu trữ NoSQL thời gian thực, đồng bộ dữ liệu tức thì và xác thực tài khoản Google (@fpt.edu.vn & @fe.edu.vn)"),
+                ("Notification", "Firebase Cloud Messaging (FCM HTTP v1)", "Gửi thông báo đẩy tức thì đến thiết bị di động khi có đơn ứng tuyển, duyệt nhóm hoặc chốt sổ"),
+                ("Dev & Tools", "VS Code • Android Studio • Git • Python 3.12 (Admin SDK)", "Phát triển mã nguồn, kịch bản tự động hóa server backend, xuất báo cáo Word/CSV"),
+                ("DevOps / Cloud", "Firebase CLI • Remote Config • Firebase Crashlytics", "Cấu hình tham số ứng dụng real-time không cần cập nhật APK; bắt và phân tích sự cố crash"),
+                ("Testing", "flutter test • fake_cloud_firestore • Mocktail", "122 bài Unit & Widget test tự động đạt 100% tỷ lệ pass, bảo đảm độ tin cậy nghiệp vụ"),
+            ]
+            for ri, row_data in enumerate(rows_data):
+                if ri + 1 < len(table.rows):
+                    table.cell(ri + 1, 0).text = row_data[0]
+                    table.cell(ri + 1, 1).text = row_data[1]
+                    table.cell(ri + 1, 2).text = row_data[2]
+                    for ci in range(3):
+                        p = table.cell(ri + 1, ci).text_frame.paragraphs[0]
+                        set_para(p, table.cell(ri + 1, ci).text, 9.5, bold=(ci == 0), color=COLOR_DARK)
+
+# ─────────────────────────────────────────────────────────────
 # SLIDE 12: UI/UX & Sitemap
 # ─────────────────────────────────────────────────────────────
 def fix_slide_12(slide):
@@ -481,6 +524,51 @@ def fix_slide_16(slide):
         set_para(p, text, size=size, bold=is_bold, color=color, space_after=1.5, space_before=4 if is_bold and idx > 0 else 0)
 
 # ─────────────────────────────────────────────────────────────
+# SLIDE 17: Tests & Traceability
+# ─────────────────────────────────────────────────────────────
+def fix_slide_17(slide):
+    for s in slide.shapes:
+        if s.has_text_frame:
+            for p in s.text_frame.paragraphs:
+                txt = p.text.strip()
+                if "UI-01 CourseSpacesPage /spaces" in txt:
+                    p.text = "UI-01 CourseSpacesScreen (Flutter Web)"
+                elif "CourseSpaceService SpaceValidators" in txt:
+                    p.text = "SpaceService & SpaceViewModel"
+                elif "CourseSpaces Groups ExeGroupDb" in txt:
+                    p.text = "spaces, enrollments (Firestore)"
+                elif "UI-02 ProfilePage /profile" in txt:
+                    p.text = "UI-02 ProfileScreen (Flutter Mobile)"
+                elif "UserProfileService UserProfileValidators" in txt:
+                    p.text = "ProfileService & UserProfile"
+                elif "UserProfiles UserSkills ExeUserDb" in txt:
+                    p.text = "users/{uid} (Firestore Document)"
+                elif "RoomDetailModal UI-03 MyGroupPage" in txt:
+                    p.text = "RoomDetailScreen & MyRoomScreen"
+                elif "GroupMembershipManager ElectionService" in txt:
+                    p.text = "GroupService & ApplicationService"
+                elif "Groups GroupMembers LeaderElections" in txt:
+                    p.text = "rooms, applications (Firestore)"
+                elif "ModeratorDistributionPage" in txt:
+                    p.text = "DistributionScreen (Web Admin)"
+                elif "GroupMatchingService MatchingGrpcService" in txt or "MatchingGrpcService" in txt:
+                    p.text = "DistributionPlanner (Python & Service)"
+                elif "StudentStats ExeReportDb" in txt:
+                    p.text = "rooms, users, stats (Firestore)"
+                elif "ModeratorTransfersPage" in txt:
+                    p.text = "TransferScreen & LecturerDashboard"
+                elif "CourseSpaceService ReportEventHandler" in txt:
+                    p.text = "TransferService & ReportService"
+                elif "GroupTransferRequests GroupStats" in txt:
+                    p.text = "transfer_requests, crash_logs"
+                elif "309/309 Unit Tests Passed" in txt or "309/309" in txt:
+                    p.text = "122/122 Unit & Widget Tests Passed (100%)"
+                elif "UI React → API Gateway" in txt:
+                    p.text = "UI Flutter (MVVM) → ViewModel & Services → Firestore SDK & FCM Cloud. Ánh xạ trực tiếp 100% đến source code dự án."
+                elif "Không có thiết kế chỉ tồn tại trên sơ đồ" in txt:
+                    p.text = "Không có thiết kế ảo. Toàn bộ Service, ViewModel và Firestore Collection đều có mã nguồn và 122 bài unit/widget test kiểm chứng."
+
+# ─────────────────────────────────────────────────────────────
 # SLIDE 19 & 20: Demo WF-01 & WF-02
 # ─────────────────────────────────────────────────────────────
 def fix_slides_19_20(prs):
@@ -576,6 +664,31 @@ def fix_slide_24(slide):
             s.text_frame.paragraphs[0].text = "users, spaces, rooms, applications, memberships, transfer_requests, crash_logs."
 
 # ─────────────────────────────────────────────────────────────
+# SLIDE 25: Limitations & Future Work
+# ─────────────────────────────────────────────────────────────
+def fix_slide_25(slide):
+    for s in slide.shapes:
+        if s.has_text_frame:
+            for p in s.text_frame.paragraphs:
+                txt = p.text.strip()
+                if "Container Footprint" in txt:
+                    p.text = "Giới hạn Free Spark Tier"
+                elif "Khoảng 11 containers" in txt:
+                    p.text = "Firebase Spark Plan giới hạn số lượng đọc/ghi đồng thời trong ngày; cần nâng cấp lên gói Blaze khi triển khai thực tế trên diện rộng toàn trường."
+                elif "Hub Channel Scoping" in txt:
+                    p.text = "Background Service trên một số ROM Android"
+                elif "Firestore Stream Hub xác thực JWT" in txt:
+                    p.text = "Một số dòng điện thoại Android (MIUI, ColorOS) tự động ngắt service nền để tiết kiệm pin; người dùng cần cấp quyền Autostart cho ứng dụng."
+                elif "Kubernetes & Cost Optimization" in txt:
+                    p.text = "Cloud Functions & Tự Động Hóa"
+                elif "Trễn khai Helm Charts, Azure SQL Serverless" in txt or "Helm Charts" in txt or "SQL Serverless" in txt:
+                    p.text = "Triển khai Firebase Cloud Functions để tự động kích hoạt thuật toán phân phối SV lẻ khi hết hạn chốt sổ mà không cần can thiệp thủ công."
+                elif "Inter-service Hub Authorization" in txt:
+                    p.text = "Hỗ trợ Toàn diện Nền tảng iOS"
+                elif "Bổ sung Distribution Planner Client" in txt:
+                    p.text = "Đồng bộ APNs (Apple Push Notification service) và cấu hình chứng chỉ để ứng dụng chạy đồng nhất trên cả Android và iOS."
+
+# ─────────────────────────────────────────────────────────────
 # SLIDE 26: 4 Lessons Learned
 # ─────────────────────────────────────────────────────────────
 def fix_slide_26(slide):
@@ -649,13 +762,17 @@ def main():
     fix_slide_6(prs.slides[5])
     fix_slide_7(prs.slides[6])
     fix_slide_8(prs.slides[7])
+    fix_slide_10(prs.slides[9])
+    fix_slide_11(prs.slides[10])
     fix_slide_12(prs.slides[11])
     fix_slide_13(prs.slides[12])
     fix_slide_14(prs.slides[13])
     fix_slide_15(prs.slides[14])
     fix_slide_16(prs.slides[15])
+    fix_slide_17(prs.slides[16])
     fix_slides_19_20(prs)
     fix_slide_24(prs.slides[23])
+    fix_slide_25(prs.slides[24])
     fix_slide_26(prs.slides[25])
     apply_global_final(prs)
 
