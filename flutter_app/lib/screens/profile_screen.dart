@@ -373,6 +373,24 @@ class _DemoSeedSection extends StatelessWidget {
           icon: const Icon(Icons.dataset_outlined),
           label: const Text('Tạo Room và đơn Apply demo'),
         ),
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final result = await vm.fillMyRoomDemo();
+            if (context.mounted) showResult(context, result);
+          },
+          icon: const Icon(Icons.group_add_outlined),
+          label: const Text('Thêm thành viên demo cho nhóm đủ ngưỡng'),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final result = await vm.demoMembersAccept();
+            if (context.mounted) showResult(context, result);
+          },
+          icon: const Icon(Icons.how_to_vote_outlined),
+          label: const Text('Thành viên demo đồng ý các đơn đang vote'),
+        ),
       ],
     );
   }
