@@ -102,12 +102,22 @@ class ProfileViewModel extends ChangeNotifier {
   /// Chi hien o ban debug.
   bool get canSeedDemo => kDebugMode;
 
-  Future<ActionResult> seedDemo() async {
+  Future<ActionResult> seedDemo() => _runDemo('seed_demo', () => _demoSeed.seed(user));
+
+  /// Bu thanh vien gia cho nhom du nguong, de 2 nguoi that test duoc Apply + vote.
+  Future<ActionResult> fillMyRoomDemo() =>
+      _runDemo('fill_room_demo', () => _demoSeed.fillMyRoom(user));
+
+  /// Thanh vien gia dong y cac don dang mo vote trong nhom.
+  Future<ActionResult> demoMembersAccept() =>
+      _runDemo('demo_members_accept', () => _demoSeed.demoMembersAcceptVotes(user));
+
+  Future<ActionResult> _runDemo(String name, Future<String> Function() run) async {
     var message = '';
     final result = await runAction(
-      name: 'seed_demo',
+      name: name,
       action: () async {
-        message = await _demoSeed.seed(user);
+        message = await run();
       },
       successMessage: '',
       crashlytics: _crashlytics,

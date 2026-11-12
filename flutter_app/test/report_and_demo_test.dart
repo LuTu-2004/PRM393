@@ -209,5 +209,33 @@ void main() {
       expect(after?.memberCount, 2);
       expect((await groups.watchPendingApplications('FA26EXE101-01').first).length, 2);
     });
+
+    test('nhom 1 nguoi that + thanh vien demo: nguoi thu 4 Apply va duoc nhan', () async {
+      final db = FakeFirebaseFirestore();
+      final now = DateTime(2026, 11, 1);
+      final groups = GroupService(firestore: db, clock: () => now);
+      final seeder = DemoSeedService(firestore: db, clock: () => now);
+      final me = student('me');
+      final friend = student('friend');
+
+      await groups.ensureSpace('EXE101');
+      await groups.joinRoom(me, 'FA26EXE101-01');
+      await seeder.fillMyRoom(me);
+      await seeder.fillMyRoom(me); // goi lai khong them qua nguong
+      var room = await groups.watchRoom('FA26EXE101-01').first;
+      expect(room?.memberCount, 3);
+      expect(room?.status, RoomStatus.group);
+      expect(room?.leaderId, 'me');
+
+      final app = await groups.applyToRoom(friend, 'FA26EXE101-01');
+      await groups.openApplicationVote(me, app.id);
+      await groups.voteApplication(me, app.id, true); // 1/3 chua du
+      expect((await groups.watchRoom('FA26EXE101-01').first)?.memberCount, 3);
+
+      await seeder.demoMembersAcceptVotes(me);
+      room = await groups.watchRoom('FA26EXE101-01').first;
+      expect(room?.memberIds, contains('friend'));
+      expect(room?.memberCount, 4);
+    });
   });
 }

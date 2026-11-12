@@ -11,10 +11,12 @@ import 'package:exe_matching/services/group_service.dart';
 class DemoSeedService {
   final FirebaseFirestore _db;
   final DateTime Function() _now;
+  final GroupService _groups;
 
-  DemoSeedService({FirebaseFirestore? firestore, DateTime Function()? clock})
+  DemoSeedService({FirebaseFirestore? firestore, DateTime Function()? clock, GroupService? groups})
     : _db = firestore ?? FirebaseFirestore.instance,
-      _now = clock ?? DateTime.now;
+      _now = clock ?? DateTime.now,
+      _groups = groups ?? GroupService(firestore: firestore, clock: clock);
 
   static const _people = [
     ('Trần Minh Anh', 'SE180201', 'SE'),
@@ -36,6 +38,15 @@ class DemoSeedService {
     ('Trương Công Vinh', 'SE180217', 'SE'),
     ('Lâm Tú Anh', 'SS180218', 'SS'),
     ('Kiều Anh Thư', 'SA180219', 'SA'),
+  ];
+
+  /// Thanh vien gia de bu cho nhom cua nguoi dung du nguong Group.
+  static const _fillers = [
+    ('Thành viên demo 1', 'SE180501', 'SE'),
+    ('Thành viên demo 2', 'SS180502', 'SS'),
+    ('Thành viên demo 3', 'SA180503', 'SA'),
+    ('Thành viên demo 4', 'SE180504', 'SE'),
+    ('Thành viên demo 5', 'SS180505', 'SS'),
   ];
 
   static const _applicants = [
@@ -119,5 +130,97 @@ class DemoSeedService {
     await batch.commit();
     return 'Đã tạo $seededRooms Room demo và $seededApplications đơn Apply vào nhóm của bạn.'
         '${membership.exists ? '' : ' Hãy vào một Room rồi bấm lại để có đơn Apply demo.'}';
+  }
+
+  /// Bu thanh vien gia vao nhom cua nguoi dung cho du nguong Group (BR-16),
+  /// de nhom chi co 1-2 nguoi that van test duoc luong Apply cua nguoi tiep theo.
+  Future<String> fillMyRoom(AppUser user) async {
+    final (spaceId, roomId) = await _myRoom(user);
+    final ref = _db.collection(Collections.rooms).doc(roomId);
+    final snap = await ref.get();
+    final room = Room.fromMap(snap.id, snap.data()!);
+    final missing = room.threshold - room.memberCount;
+    if (missing <= 0) {
+      return 'Nhóm $roomId đã có ${room.memberCount} người, đủ ngưỡng nên người khác phải Apply.';
+    }
+
+    final batch = _db.batch();
+    final added = <RoomMember>[];
+    for (final p in _fillers) {
+      if (added.length == missing) break;
+      final uid = 'demo_${p.$2.toLowerCase()}';
+      if (room.hasMember(uid)) continue;
+      final membershipRef = _db
+          .collection(Collections.memberships)
+          .doc(GroupService.membershipId(spaceId, uid));
+      // Thanh vien gia da o nhom khac (BR-21) thi bo qua.
+      if ((await membershipRef.get()).exists) continue;
+      final joinedAt = _now();
+      added.add(
+        RoomMember(uid: uid, fullName: p.$1, studentCode: p.$2, major: p.$3, joinedAt: joinedAt),
+      );
+      batch.set(membershipRef, {
+        'spaceId': spaceId,
+        'uid': uid,
+        'roomId': roomId,
+        'joinedAt': writeDate(joinedAt),
+      });
+    }
+    if (added.isEmpty) throw const BusinessException('Hết thành viên demo để thêm.');
+    batch.set(ref, room.copyWith(members: [...room.members, ...added]).toMap());
+    await batch.commit();
+    return 'Đã thêm ${added.length} thành viên demo, nhóm $roomId có '
+        '${room.memberCount + added.length} người. Người khác giờ phải Apply vào nhóm.';
+  }
+
+  /// Thanh vien gia trong nhom bo phieu dong y moi don dang mo vote (BR-25),
+  /// roi chot ket qua. Nguoi that van tu vote bang nut binh thuong.
+  Future<String> demoMembersAcceptVotes(AppUser user) async {
+    final (_, roomId) = await _myRoom(user);
+    final snap = await _db.collection(Collections.rooms).doc(roomId).get();
+    final room = Room.fromMap(snap.id, snap.data()!);
+    final demoIds = room.memberIds.where((id) => id.startsWith('demo_')).toList();
+    if (demoIds.isEmpty) throw const BusinessException('Nhóm của bạn không có thành viên demo.');
+
+    final apps = await _db
+        .collection(Collections.applications)
+        .where('roomId', isEqualTo: roomId)
+        .where('status', isEqualTo: ApplicationStatus.pending.name)
+        .get();
+    final open = apps.docs
+        .map((d) => RoomApplication.fromMap(d.id, d.data()))
+        .where((a) => a.voteOpen)
+        .toList();
+    if (open.isEmpty) throw const BusinessException('Chưa có đơn nào được Leader mở vote.');
+
+    var accepted = 0;
+    for (final app in open) {
+      final ballot = <String, Object>{
+        for (final id in demoIds)
+          if (!app.hasVoted(id)) 'votes.$id': true,
+      };
+      if (ballot.isNotEmpty) {
+        await _db.collection(Collections.applications).doc(app.id).update(ballot);
+      }
+      try {
+        final status = await _groups.settleApplicationVote(user, app.id);
+        if (status == ApplicationStatus.accepted) accepted++;
+      } on BusinessException {
+        // Nhom da du nguoi hoac ung vien da vao nhom khac: bo qua don nay.
+      }
+    }
+    return '${demoIds.length} thành viên demo đã đồng ý ${open.length} đơn, '
+        '$accepted đơn được nhận vào nhóm.';
+  }
+
+  Future<(String, String)> _myRoom(AppUser user) async {
+    final spaceId = user.spaceId;
+    if (spaceId == null) throw const BusinessException('Hãy hoàn thành hồ sơ trước.');
+    final membership = await _db
+        .collection(Collections.memberships)
+        .doc(GroupService.membershipId(spaceId, user.uid))
+        .get();
+    if (!membership.exists) throw const BusinessException('Hãy vào một Room trước.');
+    return (spaceId, membership.data()!['roomId'] as String);
   }
 }
